@@ -1,0 +1,27 @@
+{
+  "name": "spatialos-check-components",
+  "version": "0.0.0",
+  "description": "Tool for checking component usage in a SpatialOS project.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ndkrempel/spatialos-check-components.git"
+  },
+  "keywords": [
+    "spatialos",
+    "improbable"
+  ],
+  "author": "Nick Krempel <ndkrempel@gmail.com>",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ndkrempel/spatialos-check-components/issues"
+  },
+  "homepage": "https://github.com/ndkrempel/spatialos-check-components#readme",
+  "dependencies": {
+    "commander": "^2.9.0",
+    "promisify-node": "^0.4.0"
+  }
+}
