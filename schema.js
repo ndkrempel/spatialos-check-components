@@ -116,9 +116,10 @@ function* tokenize(stream) {
     if (stream.eof())
       break;
     else if (stream.consume('//'))
-      stream.consumeUntil('\n');  // TODO: Can newlines be escaped?
+      // TODO: Can newlines be escaped?
+      stream.consumeUntil('\n', /$/);
     else if (stream.consume('/*'))
-      stream.consumeUntil('*/');
+      stream.consumeUntil('*/') || stream.error('Reached end of stream while in block comment.');
     else if (stream.consume('"'))
       yield {
         type: Token.STRING,
@@ -143,7 +144,7 @@ function* tokenize(stream) {
 
   function* consumeString(stream) {
     for (;;) {
-      const {which, inner} = stream.consumeUntil('"', '\\');
+      const {which, inner} = stream.consumeUntil('"', '\\') || stream.error('Reached end of stream while in string.');
       yield inner;
       if (which === 0)
         break;
