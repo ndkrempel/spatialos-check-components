@@ -44,7 +44,7 @@ require('./helpers');
 function parse(stream) {
   // TODO
   // return [package, components: [[name, id, synchronized], ...]
-  const tokenizer = tokenize(stream);
+  const tokenizer = tap(tokenize(stream));
   let token;
   do
     token = tokenizer.next().value;
@@ -112,7 +112,7 @@ const Token = {
 function* tokenize(stream) {
   for (;;) {
     let result;
-    stream.consumeAll(/\s/);
+    stream.consume(/\s*/); // stream.consumeAll(/\s/);
     if (stream.eof())
       break;
     else if (stream.consume('//'))
@@ -121,19 +121,20 @@ function* tokenize(stream) {
       stream.consumeUntil('*/');
     else if (stream.consume('"'))
       yield {
-        type: SchemaToken.STRING,
+        type: Token.STRING,
         value: Array.from(consumeString(stream)).join(''),
       };
-    else if (result = stream.consumeAll(/\w/))
+    else if (result = stream.consume(/\w+/))
+    // else if (result = stream.consumeAll(/\w/))
       // TODO: Can numbers contain "+", "-", ".", "e", ...?
       yield {
-        type: SchemaToken.ALPHANUMERIC,
-        value: result,
+        type: Token.ALPHANUMERIC,
+        value: result[0],
       };
     else if (result = stream.consume(/[.;<=>{}]/))
       // Or allow any ASCII punctuation? /[!#-\/:-@[-^`{-~]/
       yield {
-        type: SchemaToken.PUNCTUATION,
+        type: Token.PUNCTUATION,
         value: result[0],
       };
     else
@@ -156,10 +157,10 @@ class Stream {
     if (new.target === Stream)
       throw TypeError('Cannot instantiate abstract class Stream');
   }
-  eof() {}
-  consume(...patterns) {}
-  consumeUntil(...patterns) {}
-  consumeAll(...patterns) {}
+  eof() { return true; }
+  consume(...patterns) { return null; }
+  consumeUntil(...patterns) { return null; }
+  consumeAll(...patterns) { return null; }
   // TODO: Add line + column number reporting.
   error(message) { throw Error(message); }
 }
@@ -173,12 +174,10 @@ class StringStream extends Stream {
   consume(...patterns) {
     for (let [which, pattern] of patterns.entries()) {
       if (Reflect.isRegExp(pattern)) {
-        const match = regExpExecStart(this.data_, regExp);
-        if (match !== null) {
-          // TODO: Check lastIndex is still in code units when unicode flag set.
-          this.data_ = this.data_.substring(match.lastIndex);
+        const match = regExpExecStart(this.data_, pattern);
+        if (match) {
+          this.data_ = this.data_.substring(match[0].length);
           delete match.input;
-          delete match.lastIndex;
           match.which = which;
           return match;
         }
@@ -199,16 +198,15 @@ class StringStream extends Stream {
     for (let [which, pattern] of patterns.entries()) {
       if (Reflect.isRegExp(pattern)) {
         const match = RegExp(pattern).exec(this.data_);
-        if (match !== null && (firstMatch === null || match.index < firstMatch.index)) {
+        if (match && (!firstMatch || match.index < firstMatch.index)) {
           delete match.input;
-          delete match.lastIndex;
           match.which = which;
           firstMatch = match;
         }
       } else {
         pattern += '';
         const index = this.data_.indexOf(pattern);
-        if (index >= 0 && (firstMatch === null || index < firstMatch.index)) {
+        if (index >= 0 && (!firstMatch || index < firstMatch.index)) {
           firstMatch = [pattern];
           firstMatch.which = which;
           firstMatch.index = index;
@@ -226,17 +224,17 @@ class StringStream extends Stream {
     outer: for (;;) {
       for (let pattern of patterns) {
         if (Reflect.isRegExp(pattern)) {
-          const match = regExpExecStart(this.data_, regExp);
-          if (match !== null) {
+          const match = regExpExecStart(this.data_, pattern);
+          if (match && match[0]) {
             // TODO: Check lastIndex is still in code units when unicode flag set.
-            accumulator += this.data_.substring(0, match.lastIndex);
-            this.data_ = this.data_.substring(match.lastIndex);
+            accumulator += this.data_.substring(0, match[0].length);
+            this.data_ = this.data_.substring(match[0].length);
             continue outer;
           }
         } else {
           pattern += '';
           if (this.data_.startsWith(pattern)) {
-            accumulator += this.data_.substring(pattern.length);
+            accumulator += this.data_.substring(0, pattern.length);
             this.data_ = this.data_.substring(pattern.length);
             continue outer;
           }
@@ -244,6 +242,9 @@ class StringStream extends Stream {
       }
       return accumulator;
     }
+  }
+  error(message) {
+    super.error(message + '\n  "' + this.data_.match(/^[^\n]{0,30}/)[0] + '"...\n   ^');
   }
 }
 
@@ -255,7 +256,18 @@ function regExpExecStart(string, regExp) {
   let flags = regExp.flags;
   if (!flags.includes('y'))
     flags += 'y';
-  return RegExp(regExp.source, flags).exec(this.data_);
+  return RegExp(regExp.source, flags).exec(string);
+}
+
+// TODO: Remove.
+function* tap(iterator) {
+  for (;;) {
+    const next = iterator.next();
+    console.log('%j', next);
+    if (next.done)
+      return next.value;
+    yield next.value;
+  }
 }
 
 module.exports = {

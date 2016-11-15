@@ -64,7 +64,7 @@ const projectName = project['name'],
 assert(projectSdkVersion, 'Invalid project SDK version');
 log('Name:           %s', projectName);
 log('Version:        %s', projectVersion);
-log('SDK version:    %s', projectSdkVersion.join('.'));
+log('SDK version:    %s', stringifyVersion(projectSdkVersion));
 // TODO: Support earlier SpatialOS versions.
 if (projectSdkVersion[0] < 8)
   errorExit('Fatal error: this tool only supports projects using'
@@ -81,7 +81,8 @@ for (let [file, breadcrumbs] of readDirRecursive(schemaPath)) {
   // TODO: Is UTF-8 the right encoding?
   const data = fs.readFileSync(file, 'utf8')
   log('%s', data);
-  const [package_, components] = schema.parse(data);
+  // TODO: Use schema.FileStream to avoid reading entire file into a string.
+  const [package_, components] = schema.parse(new schema.StringStream(data));
 }
 
 // spatialos_worker.json
@@ -160,8 +161,12 @@ function directoryExists(path) {
 }
 
 function parseVersion(version) {
-  const parts = version.match(/^(\d)+\.(\d+)\.(\d+)$/);
-  return parts && parts.slice(1).map(_ => parseInt(_, 10));
+  const parts = version.match(/^(\d)+\.(\d+)\.(\d+)(?:-([-\w]*))?$/);
+  return parts && parts.slice(1, 4).map(_ => parseInt(_, 10)).concat(parts[4]);
+}
+
+function stringifyVersion(version) {
+  return version.slice(0, 3).join('.') + (version[3] != null ? '-' + version[3] : '');
 }
 
 function errorExit(format, ...args) {
