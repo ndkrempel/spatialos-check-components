@@ -83,6 +83,8 @@ for (let [file, breadcrumbs] of readDirRecursive(schemaPath)) {
   log('%s', data);
   // TODO: Use schema.FileStream to avoid reading entire file into a string.
   const [package_, components] = schema.parse(new schema.StringStream(data));
+  console.log(package_);
+  console.log(components);
 }
 
 // spatialos_worker.json

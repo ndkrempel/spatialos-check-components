@@ -214,8 +214,10 @@ class StringStream extends Stream {
         }
       }
     }
-    if (firstMatch !== null)
+    if (firstMatch !== null) {
       firstMatch.inner = this.data_.substring(0, firstMatch.index);
+      this.data_ = this.data_.substring(firstMatch.index + firstMatch[0].length);
+    }
     // TODO: firstMatch.outer
     return firstMatch;
   }
