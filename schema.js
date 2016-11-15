@@ -116,7 +116,7 @@ function* tokenize(stream) {
     if (stream.eof())
       break;
     else if (stream.consume('//'))
-      stream.consumeUntil('\\n');  // TODO: Can newlines be escaped?
+      stream.consumeUntil('\n');  // TODO: Can newlines be escaped?
     else if (stream.consume('/*'))
       stream.consumeUntil('*/');
     else if (stream.consume('"'))
