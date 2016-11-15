@@ -1,11 +1,6 @@
 'use strict';
 
-module.exports = {
-  parse,
-  Stream,
-  StringStream,
-  FileStream,
-};
+require('./helpers');
 
 // schemas/foo/bar.schema
 //   comments: // and /*...*/
@@ -139,7 +134,7 @@ function* tokenize(stream) {
       // Or allow any ASCII punctuation? /[!#-\/:-@[-^`{-~]/
       yield {
         type: SchemaToken.PUNCTUATION,
-        value: result,
+        value: result[0],
       };
     else
       stream.error('Unexpected input.');
@@ -151,7 +146,7 @@ function* tokenize(stream) {
       yield inner;
       if (which === 0)
         break;
-      yield result.consume(/[\w\W]/);
+      yield result.consume(/[\w\W]/)[0];
     }
   }
 }
@@ -165,27 +160,107 @@ class Stream {
   consume(...patterns) {}
   consumeUntil(...patterns) {}
   consumeAll(...patterns) {}
+  // TODO: Add line + column number reporting.
   error(message) { throw Error(message); }
 }
 
 class StringStream extends Stream {
   constructor(data) {
     super();
-    this.data_ = data;
+    this.data_ = data + '';
   }
   eof() { return !this.data_.length; }
   consume(...patterns) {
-    for (let pattern of patterns) {
-      if (pattern instanceof RegExp) {
-        
+    for (let [which, pattern] of patterns.entries()) {
+      if (Reflect.isRegExp(pattern)) {
+        const match = regExpExecStart(this.data_, regExp);
+        if (match !== null) {
+          // TODO: Check lastIndex is still in code units when unicode flag set.
+          this.data_ = this.data_.substring(match.lastIndex);
+          delete match.input;
+          delete match.lastIndex;
+          match.which = which;
+          return match;
+        }
       } else {
-        
+        pattern += '';
+        if (this.data_.startsWith(pattern)) {
+          this.data_ = this.data_.substring(pattern.length);
+          const match = [pattern];
+          match.which = which;
+          return match;
+        }
       }
     }
+    return null;
   }
-  // TODO
+  consumeUntil(...patterns) {
+    let firstMatch = null;
+    for (let [which, pattern] of patterns.entries()) {
+      if (Reflect.isRegExp(pattern)) {
+        const match = RegExp(pattern).exec(this.data_);
+        if (match !== null && (firstMatch === null || match.index < firstMatch.index)) {
+          delete match.input;
+          delete match.lastIndex;
+          match.which = which;
+          firstMatch = match;
+        }
+      } else {
+        pattern += '';
+        const index = this.data_.indexOf(pattern);
+        if (index >= 0 && (firstMatch === null || index < firstMatch.index)) {
+          firstMatch = [pattern];
+          firstMatch.which = which;
+          firstMatch.index = index;
+        }
+      }
+    }
+    if (firstMatch !== null)
+      firstMatch.inner = this.data_.substring(0, firstMatch.index);
+    // TODO: firstMatch.outer
+    return firstMatch;
+  }
+  consumeAll(...patterns) {
+    // TODO: Hoist RegExp/string conversions out of loop.
+    let accumulator = '';
+    outer: for (;;) {
+      for (let pattern of patterns) {
+        if (Reflect.isRegExp(pattern)) {
+          const match = regExpExecStart(this.data_, regExp);
+          if (match !== null) {
+            // TODO: Check lastIndex is still in code units when unicode flag set.
+            accumulator += this.data_.substring(0, match.lastIndex);
+            this.data_ = this.data_.substring(match.lastIndex);
+            continue outer;
+          }
+        } else {
+          pattern += '';
+          if (this.data_.startsWith(pattern)) {
+            accumulator += this.data_.substring(pattern.length);
+            this.data_ = this.data_.substring(pattern.length);
+            continue outer;
+          }
+        }
+      }
+      return accumulator;
+    }
+  }
 }
 
 class FileStream extends Stream {
   // TODO
 }
+
+function regExpExecStart(string, regExp) {
+  let flags = regExp.flags;
+  if (!flags.includes('y'))
+    flags += 'y';
+  return RegExp(regExp.source, flags).exec(this.data_);
+}
+
+module.exports = {
+  parse,
+  Stream,
+  StringStream,
+  FileStream,
+};
