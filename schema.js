@@ -18,6 +18,14 @@ const COLLECTION_TYPES = [
   'map',
 ];
 
+// queryable
+// synchronized
+
+// disable_fabric_codegen
+// disable_cpp_codegen
+// disable_csharp_codegen
+// disable_scala_codegen
+
 function parse(stream) {
   return parseSchema(new TokenStream(tokenize(stream)));
 }
@@ -72,27 +80,15 @@ function parseComponent(stream) {
   // TODO: Can enums or types be nested inside components?
   // TODO: Must components come in the order: options, id, fields?
   component.options = [];
-  while (stream.tryConsumeIdentifier('option')) {
-    const option = {};
-    option.name = stream.consumeIdentifier();
-    stream.consumePunctuation('=');
-    if (stream.tryConsumeIdentifier('false'))
-      option.value = false;
-    else if (stream.tryConsumeIdentifier('true'))
-      option.value = true;
-    else if (option.value = stream.tryConsumeNumber());
-    else if (option.value = stream.tryConsumeString());
-    else
-      stream.error('Expecting boolean, integer or string.');
-    stream.consumePunctuation(';');
-    component.options.push(option);
-  }
+  while (stream.tryConsumeIdentifier('option'))
+    component.options.push(parseOption(stream));
   stream.consumeIdentifier('id');
   stream.consumePunctuation('=');
   component.id = stream.consumeNumber();
   stream.consumePunctuation(';');
   component.fields = [];
   component.events = [];
+  component.commands = [];
   while (!stream.tryConsumePunctuation('}')) {
     if (stream.tryConsumeIdentifier('data')) {
       if (component.data !== undefined)
@@ -105,6 +101,14 @@ function parseComponent(stream) {
       event.name = stream.consumeIdentifier();
       stream.consumePunctuation(';');
       component.events.push(event);
+    } else if (stream.tryConsumeIdentifier('command')) {
+      const command = {};
+      command.requestType = parseTypeRef(stream);
+      command.name = stream.consumeIdentifier();
+      stream.consumeIdentifier('returns');
+      command.responseType = parseTypeRef(stream);
+      stream.consumePunctuation(';');
+      component.commands.push(command);
     } else {
       const field = {};
       field.type = parseTypeRef(stream);
@@ -123,11 +127,14 @@ function parseType(stream) {
   type.name = stream.consumeIdentifier();
   type.type = 'type';
   stream.consumePunctuation('{');
+  type.options = [];
+  // TODO: "option" could also be the start of an "option<" field - disambiguate.
+  while (stream.tryConsumeIdentifier('option'))
+    type.options.push(parseOption(stream));
   type.fields = [];
   type.nested = [];
   while (!stream.tryConsumePunctuation('}')) {
     // TODO: Allow stray semicolons?
-    // TODO: "option", e.g. "disable_scala_codegen".
     if (stream.tryConsumeIdentifier('type'))
       type.nested.push(parseType(stream));
     else if (stream.tryConsumeIdentifier('enum'))
@@ -160,6 +167,22 @@ function parseEnum(stream) {
     enum_.values.push({name, value});
   }
   return enum_;
+}
+
+function parseOption(stream) {
+  const option = {};
+  option.name = stream.consumeIdentifier();
+  stream.consumePunctuation('=');
+  if (stream.tryConsumeIdentifier('false'))
+    option.value = false;
+  else if (stream.tryConsumeIdentifier('true'))
+    option.value = true;
+  else if (option.value = stream.tryConsumeNumber());
+  else if (option.value = stream.tryConsumeString());
+  else
+    stream.error('Expecting boolean, integer or string.');
+  stream.consumePunctuation(';');
+  return option;
 }
 
 function parseTypeRef(stream) {
