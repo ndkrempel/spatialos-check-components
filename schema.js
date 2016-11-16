@@ -139,7 +139,7 @@ function parseType(stream) {
       stream.consumePunctuation('=');
       field.id = stream.consumeNumber();
       stream.consumePunctuation(';');
-      component.fields.push(field);
+      type.fields.push(field);
     }
   }
   return type;
