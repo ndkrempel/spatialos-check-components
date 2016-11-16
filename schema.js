@@ -54,7 +54,7 @@ function parseSchema(stream) {
         schema.types.push(parseType(stream));
         break;
       case 'enum':
-        schema.type.push(parseEnum(stream));
+        schema.types.push(parseEnum(stream));
         break;
       default:
         stream.error('Unknown keyword.');
