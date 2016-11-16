@@ -74,6 +74,7 @@ if (projectSdkVersion[0] < 8)
 const schemaPath = path.join(projectPath, SCHEMA_DIR);
 assert(directoryExists(schemaPath), 'Schema directory not present');
 log('Scanning schema definitions...');
+let components = [];
 for (let [file, breadcrumbs] of readDirRecursive(schemaPath)) {
   if (!breadcrumbs.last.endsWith(SCHEMA_EXT))
     continue;
@@ -82,10 +83,15 @@ for (let [file, breadcrumbs] of readDirRecursive(schemaPath)) {
   const data = fs.readFileSync(file, 'utf8')
   // TODO: Use schema.FileStream to avoid reading entire file into a string.
   const s = schema.parse(new schema.StringStream(data));
-  for (const component of s.components) {
-    log('      (%d) %s', component.id, [].concat(s.package, component.name).join('.'));
-  }
+  for (const component of s.components)
+    log('  (%d) %s', component.id, s.package.concat(component.name).join('.'));
+  components = components.concat(s.components);
 }
+
+components.sort((x, y) => x.id - y.id);
+log('All components:');
+for (const component of components)
+  log('%d\t%s', component.id, component.name);
 
 // spatialos_worker.json
 //  build_type: scala | unity

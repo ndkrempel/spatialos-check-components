@@ -127,6 +127,7 @@ function parseType(stream) {
   type.nested = [];
   while (!stream.tryConsumePunctuation('}')) {
     // TODO: Allow stray semicolons?
+    // TODO: "option", e.g. "disable_scala_codegen".
     if (stream.tryConsumeIdentifier('type'))
       type.nested.push(parseType(stream));
     else if (stream.tryConsumeIdentifier('enum'))
