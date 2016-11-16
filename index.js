@@ -69,7 +69,7 @@ log('SDK version:    %s', stringifyVersion(projectSdkVersion));
 if (projectSdkVersion[0] < 8)
   errorExit('Fatal error: this tool only supports projects using'
       + ' the new schema format (SpatialOS 8 or later).\n'
-      + 'The project\'s declared SDK version is %s.', projectSdkVersion.join('.'));
+      + 'The project\'s declared SDK version is %s.', stringifyVersion(projectSdkVersion));
 
 const schemaPath = path.join(projectPath, SCHEMA_DIR);
 assert(directoryExists(schemaPath), 'Schema directory not present');
@@ -82,9 +82,9 @@ for (let [file, breadcrumbs] of readDirRecursive(schemaPath)) {
   const data = fs.readFileSync(file, 'utf8')
   log('%s', data);
   // TODO: Use schema.FileStream to avoid reading entire file into a string.
-  const [package_, components] = schema.parse(new schema.StringStream(data));
-  console.log(package_);
-  console.log(components);
+  const s = schema.parse(new schema.StringStream(data));
+  console.dir(s);
+  console.log('%j', s);
 }
 
 // spatialos_worker.json

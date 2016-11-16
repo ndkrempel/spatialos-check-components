@@ -2,111 +2,253 @@
 
 require('./helpers');
 
-// schemas/foo/bar.schema
-//   comments: // and /*...*/
+const PRIMITIVE_TYPES = [
+  'bool',
+  'uint32', 'uint64', 'int32', 'int64', 'sint32', 'sint64',
+  'fixed32', 'fixed64', 'sfixed32', 'sfixed64',
+  'float', 'double',
+  'string', 'bytes',
+  'Coordinates', 'Vector3d', 'Vector3f',
+  'EntityId',
+  'EntityPosition',
+];
 
-//   package <name>.<name>.<name>;
-//   import "<path>" (needs semicolon?)
-//   component <name> {
-//     option <name> = <value>; (synchronized, queryable)
-//     id = <component_id>;
-//     <type> <name> = <field_id>;
-//     event <type> <name>;
-//     data <type>;
-//   }
-//   type <name> {
-//     type <name> {
-//       ...
-//     }
-//     enum <name> {
-//       ...
-//     }
-//     <type> <name> = <field_id>;
-//   }
-//   enum <name> {
-//     <name> = <value>;
-//   }
-//
-//   component IDs [,100) and [190000,200000) reserved
-//   primitive types:
-//     bool
-//     uint32, uint64, int32, int64, sint32, sint64
-//     fixed32, fixed64, sfixed32, sfixed64
-//     float, double
-//     string, bytes
-//     Coordinates, Vector3d, Vector3f
-//     EntityId
-//     EntityPosition
-//   collection types:
-//     option<T>, list<T>, map<K, V> (K integral/enum/string/EntityId)
-// can enums or types be nested inside components?
+const COLLECTION_TYPES = [
+  'option', 'list',
+  'map',
+];
 
 function parse(stream) {
-  // TODO
-  // return [package, components: [[name, id, synchronized], ...]
-  const tokenizer = tap(tokenize(stream));
-  let token;
-  do
-    token = tokenizer.next().value;
-  while (token && token.type === Token.PUNCTUATION && token.value === ';')
-  if (!token || token.type !== Token.ALPHANUMERIC || token.value !== 'package')
-    stream.error('Expecting package declaration.');
-  const packageParts = [];
-  packageLoop: for (;;) {
-    token = tokenizer.next().value;
-    if (!token || token.type !== Token.ALPHANUMERIC)
-      stream.error('Expecting package name.');
-    packageParts.push(token.value);
-    token = tokenizer.next().value;
-    if (token && token.type === Token.PUNCTUATION)
-      switch (token.value) {
-        case '.': continue;
-        case ';': break packageLoop;
-      }
-    stream.error('Expecting "." or ";".');
-  }
-  // TODO
-  return [packageParts, []];
-  // a full representation might be:
-  // {
-  //   package: "",
-  //   imports: ["", ...],
-  //   types: [{
-  //     name: "",
-  //     type: "type" | "enum",
-  //     fields: [<field>],
-  //     nested: [<type>],
-  //     values: [{
-  //       name: "",
-  //       value: 0,
-  //     }],
-  //   }],
-  //   components: [{
-  //     id: 0,
-  //     name: "",
-  //     options: [{
-  //       name: "",
-  //       value: "",
-  //     }],
-  //     fields: [{
-  //       id: 0,
-  //       name: "",
-  //       type: <typename>,
-  //     }],
-  //     data: <typename?>,
-  //     events: [{
-  //       name: "",
-  //       type: <typename?>,
-  //     }],
-  //   }],
-  // }
+  return parseSchema(new TokenStream(tokenize(stream)));
 }
 
+function parseSchema(stream) {
+  const schema = {};
+  let token;
+  // TODO: Stray semicolons allowed?
+  while (stream.tryConsumePunctuation(';'));
+  stream.consumeIdentifier('package');
+  schema.package = [];
+  packageLoop: for (;;) {
+    schema.package.push(stream.consumeIdentifier());
+    if (stream.tryConsumePunctuation(';'))
+      break;
+    stream.consumePunctuation('.');
+  }
+  schema.imports = [];
+  for (;;) {
+    while (stream.tryConsumePunctuation(';'));
+    if (!stream.tryConsumeIdentifier('import'))
+      break;
+    schema.imports.push(stream.consumeString());
+    stream.consumePunctuation(';');
+  }
+  schema.components = [];
+  schema.types = [];
+  while (!stream.eof()) {
+    switch (stream.consumeIdentifier()) {
+      case 'component':
+        schema.components.push(parseComponent(stream));
+        break;
+      case 'type':
+        schema.types.push(parseType(stream));
+        break;
+      case 'enum':
+        schema.type.push(parseEnum(stream));
+        break;
+      default:
+        stream.error('Unknown keyword.');
+    }
+    while (stream.tryConsumePunctuation(';'));
+  }
+  return schema;
+}
+
+function parseComponent(stream) {
+  const component = {};
+  component.name = stream.consumeIdentifier();
+  stream.consumePunctuation('{');
+  component.options = [];
+  component.fields = [];
+  component.events = [];
+  while (!stream.tryConsumePunctuation('}')) {
+    // TODO: Allow stray semicolons?
+    // TODO: Can enums or types be nested inside components?
+    if (stream.tryConsumeIdentifier('option')) {
+      // TODO: Must options come first in a component?
+      const option = {};
+      option.name = stream.consumeIdentifier();
+      stream.consumePunctuation('=');
+      if (stream.tryConsumeIdentifier('false'))
+        option.value = false;
+      else if (stream.tryConsumeIdentifier('true'))
+        option.value = true;
+      else if (option.value = stream.tryConsumeNumber());
+      else if (option.value = stream.tryConsumeString());
+      else
+        stream.error('Expecting boolean, integer or string.');
+      stream.consumePunctuation(';');
+      component.options.push(option);
+    } else if (stream.tryConsumeIdentifier('id')) {
+      if (component.id !== undefined)
+        stream.error('Duplicate id definition for component.');
+      stream.consumePunctuation('=');
+      component.id = stream.consumeNumber();
+      stream.consumePunctuation(';');
+    } else if (stream.tryConsumeIdentifier('data')) {
+      if (component.data !== undefined)
+        stream.error('Duplicate data declaration for component.');
+      component.data = parseTypeRef(stream);
+      stream.consumePunctuation(';');
+    } else if (stream.tryConsumeIdentifier('event')) {
+      const event = {};
+      event.type = parseTypeRef(stream);
+      event.name = stream.consumeIdentifier();
+      stream.consumePunctuation(';');
+      component.events.push(event);
+    } else {
+      const field = {};
+      field.type = parseTypeRef(stream);
+      field.name = stream.consumeIdentifier();
+      stream.consumePunctuation('=');
+      field.id = stream.consumeNumber();
+      stream.consumePunctuation(';');
+      component.fields.push(field);
+    }
+  }
+  return component;
+}
+
+function parseType(stream) {
+  const type = {};
+  type.name = stream.consumeIdentifier();
+  type.type = 'type';
+  stream.consumePunctuation('{');
+  type.fields = [];
+  type.nested = [];
+  while (!stream.tryConsumePunctuation('}')) {
+    // TODO: Allow stray semicolons?
+    if (stream.tryConsumeIdentifier('type'))
+      type.nested.push(parseType(stream));
+    else if (stream.tryConsumeIdentifier('enum'))
+      type.nested.push(parseEnum(stream));
+    else {
+      const field = {};
+      field.type = parseTypeRef(stream);
+      field.name = stream.consumeIdentifier();
+      stream.consumePunctuation('=');
+      field.id = stream.consumeNumber();
+      stream.consumePunctuation(';');
+      component.fields.push(field);
+    }
+  }
+  return type;
+}
+
+function parseEnum(stream) {
+  const enum_ = {};
+  enum_.name = stream.consumeIdentifier();
+  enum_.type = 'enum';
+  stream.consumePunctuation('{');
+  enum_.values = [];
+  while (!stream.tryConsumePunctuation('}')) {
+    // TODO: Allow stray semicolons?
+    const name = stream.consumeIdentifier();
+    stream.consumePunctuation('=');
+    const value = stream.consumeNumber();
+    stream.consumePunctuation(';');
+    enum_.values.push({name, value});
+  }
+  return enum_;
+}
+
+function parseTypeRef(stream) {
+  let name;
+  for (name of PRIMITIVE_TYPES)
+    if (stream.tryConsumeIdentifier(name))
+      return {name};
+  if (name = (stream.tryConsumeIdentifier('option') || stream.tryConsumeIdentifier('list'))) {
+    stream.consumePunctuation('<');
+    const valueType = parseTypeRef(stream);
+    stream.consumePunctuation('>');
+    return {name, valueType};
+  } else if (name = stream.tryConsumeIdentifier('map')) {
+    stream.consumePunctuation('<');
+    const keyType = parseTypeRef(stream);
+    stream.consumePunctuation(',');
+    const valueType = parseTypeRef(stream);
+    stream.consumePunctuation('>');
+    return {name, keyType, valueType};
+  }
+  const parts = [];
+  if (stream.tryConsumePunctuation('.'))
+    parts.push('');
+  do
+    parts.push(stream.consumeIdentifier());
+  while (stream.tryConsumePunctuation('.'));
+  return {name: parts};
+}
+
+class TokenStream {
+  constructor(iterator) {
+    this.iterator_ = iterator;
+    this.consume();
+  }
+  eof() { return !this.next_; }
+  peek() { return this.next_; }
+  consume() {
+    const current = this.next_;
+    this.next_ = this.iterator_.next().value;
+    return current;
+  }
+  consumeIdentifier(value = undefined) {
+    const result = this.tryConsumeIdentifier(value);
+    if (result === undefined)
+      this.error(value === undefined ? 'Expecting identifier.' : 'Expecting identifier "' + value + '".');
+    return result;
+  }
+  tryConsumeIdentifier(value = undefined) {
+    if (this.next_ && this.next_.type === Token.IDENTIFIER && (value === undefined || this.next_.value === value))
+      return this.consume().value;
+  }
+  consumeNumber() {
+    const result = this.tryConsumeNumber();
+    if (result === undefined)
+      this.error('Expecting number.');
+    return result;
+  }
+  tryConsumeNumber() {
+    if (this.next_ && this.next_.type === Token.NUMBER)
+      return this.consume().value;
+  }
+  consumeString() {
+    const result = this.tryConsumeString();
+    if (result === undefined)
+      this.error('Expecting string.');
+    return result;
+  }
+  tryConsumeString() {
+    if (this.next_ && this.next_.type === Token.STRING)
+      return this.consume().value;
+  }
+  consumePunctuation(value = undefined) {
+    const result = this.tryConsumePunctuation(value);
+    if (result === undefined)
+      this.error(value === undefined ? 'Expecting punctuation.' : 'Expecting "' + value + '".');
+    return result;
+  }
+  tryConsumePunctuation(value = undefined) {
+    if (this.next_ && this.next_.type === Token.PUNCTUATION && (value === undefined || this.next_.value === value))
+      return this.consume().value;
+  }
+  error(message) { throw Error(message); }
+}
 
 const Token = {
-  ALPHANUMERIC: 0,
-  PUNCTUATION:  1,
-  STRING:       2,
+  IDENTIFIER:  0,
+  NUMBER:      1,
+  STRING:      2,
+  PUNCTUATION: 3,
 };
 
 function* tokenize(stream) {
@@ -125,14 +267,22 @@ function* tokenize(stream) {
         type: Token.STRING,
         value: Array.from(consumeString(stream)).join(''),
       };
-    else if (result = stream.consume(/\w+/))
-    // else if (result = stream.consumeAll(/\w/))
-      // TODO: Can numbers contain "+", "-", ".", "e", ...?
+    else if (result = stream.consume(/[A-Za-z_]\w*/))
       yield {
-        type: Token.ALPHANUMERIC,
+        type: Token.IDENTIFIER,
         value: result[0],
       };
-    else if (result = stream.consume(/[.;<=>{}]/))
+    else if (result = stream.consume(/[0-9]\w*/)) {
+      // TODO: Can numbers contain "+", "-", ".", "e", ...? Have leading "0"? "x"?
+      // TODO: Cope with numbers > 2**52.
+      if (!/[1-9]\d{0,19}/.test(result[0]))
+        stream.error('Bad number.');
+      yield {
+        type: Token.NUMBER,
+        value: parseInt(result[0], 10),
+      }
+    }
+    else if (result = stream.consume(/[,.;<=>{}]/))
       // Or allow any ASCII punctuation? /[!#-\/:-@[-^`{-~]/
       yield {
         type: Token.PUNCTUATION,
@@ -274,6 +424,8 @@ function* tap(iterator) {
 }
 
 module.exports = {
+  PRIMITIVE_TYPES,
+  COLLECTION_TYPES,
   parse,
   Stream,
   StringStream,
