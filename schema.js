@@ -128,9 +128,6 @@ function parseType(stream) {
   type.type = 'type';
   stream.consumePunctuation('{');
   type.options = [];
-  // TODO: "option" could also be the start of an "option<" field - disambiguate.
-  while (stream.tryConsumeIdentifier('option'))
-    type.options.push(parseOption(stream));
   type.fields = [];
   type.nested = [];
   while (!stream.tryConsumePunctuation('}')) {
@@ -140,13 +137,18 @@ function parseType(stream) {
     else if (stream.tryConsumeIdentifier('enum'))
       type.nested.push(parseEnum(stream));
     else {
-      const field = {};
-      field.type = parseTypeRef(stream);
-      field.name = stream.consumeIdentifier();
-      stream.consumePunctuation('=');
-      field.id = stream.consumeNumber();
-      stream.consumePunctuation(';');
-      type.fields.push(field);
+      let typeRef = parseTypeRef(stream, true);
+      if (typeRef === 'option')
+        type.options.push(parseOption(string));
+      else {
+        const field = {};
+        field.type = typeRef;
+        field.name = stream.consumeIdentifier();
+        stream.consumePunctuation('=');
+        field.id = stream.consumeNumber();
+        stream.consumePunctuation(';');
+        type.fields.push(field);
+      }
     }
   }
   return type;
@@ -185,13 +187,18 @@ function parseOption(stream) {
   return option;
 }
 
-function parseTypeRef(stream) {
+function parseTypeRef(stream, disambiguateOption = false) {
   let name;
   for (name of PRIMITIVE_TYPES)
     if (stream.tryConsumeIdentifier(name))
       return {name};
   if (name = (stream.tryConsumeIdentifier('option') || stream.tryConsumeIdentifier('list'))) {
-    stream.consumePunctuation('<');
+    // Special case for "option" as it could also be the start of an option.
+    if (disambiguateOption && name === 'option') {
+      if (!stream.tryConsumePunctuation('<'))
+        return name;
+    } else
+      stream.consumePunctuation('<');
     const valueType = parseTypeRef(stream);
     stream.consumePunctuation('>');
     return {name, valueType};
