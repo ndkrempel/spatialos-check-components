@@ -274,7 +274,7 @@ function* tokenize(stream) {
     else if (result = stream.consume(/[0-9]\w*/)) {
       // TODO: Can numbers contain "+", "-", ".", "e", ...? Have leading "0"? "x"?
       // TODO: Cope with numbers > 2**52.
-      if (!/[1-9]\d{0,19}/.test(result[0]))
+      if (result[0] !== '0' && !/[1-9]\d{0,19}/.test(result[0]))
         stream.error('Bad number.');
       yield {
         type: Token.NUMBER,
