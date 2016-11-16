@@ -80,11 +80,11 @@ for (let [file, breadcrumbs] of readDirRecursive(schemaPath)) {
   log('==> %s', breadcrumbs.join('/'));
   // TODO: Is UTF-8 the right encoding?
   const data = fs.readFileSync(file, 'utf8')
-  log('%s', data);
   // TODO: Use schema.FileStream to avoid reading entire file into a string.
   const s = schema.parse(new schema.StringStream(data));
-  console.dir(s);
-  console.log('%j', s);
+  for (const component of s.components) {
+    log('      (%d) %s', component.id, [].concat(s.package, component.name).join('.'));
+  }
 }
 
 // spatialos_worker.json
