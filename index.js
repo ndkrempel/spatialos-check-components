@@ -92,6 +92,7 @@ components.sort((x, y) => x.id - y.id);
 log('All components:');
 for (const component of components)
   log('%d\t%s', component.id, component.name);
+log(groupRanges(components.map(_ => _.id)).map(r => r[0] + (r[0] !== r[1] ? '-' + r[1] : '')).join(', '));
 
 // spatialos_worker.json
 //  build_type: scala | unity
@@ -212,4 +213,19 @@ function wordWrap(text, width = 79) {
     result.push(line);
   }
   return result.join('\n');
+}
+
+function groupRanges(integers) {
+  let ranges = [], start, end;
+  for (const i of integers)
+    if (start !== undefined && i === end + 1)
+      ++end;
+    else {
+      if (start !== undefined)
+        ranges.push([start, end]);
+      start = end = i;
+    }
+  if (start !== undefined)
+    ranges.push([start, end]);
+  return ranges;
 }
