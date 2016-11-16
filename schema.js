@@ -139,7 +139,7 @@ function parseType(stream) {
     else {
       let typeRef = parseTypeRef(stream, true);
       if (typeRef === 'option')
-        type.options.push(parseOption(string));
+        type.options.push(parseOption(stream));
       else {
         const field = {};
         field.type = typeRef;
