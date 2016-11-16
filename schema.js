@@ -68,34 +68,33 @@ function parseComponent(stream) {
   const component = {};
   component.name = stream.consumeIdentifier();
   stream.consumePunctuation('{');
+  // TODO: Allow stray semicolons?
+  // TODO: Can enums or types be nested inside components?
+  // TODO: Must components come in the order: options, id, fields?
   component.options = [];
+  while (stream.tryConsumeIdentifier('option')) {
+    const option = {};
+    option.name = stream.consumeIdentifier();
+    stream.consumePunctuation('=');
+    if (stream.tryConsumeIdentifier('false'))
+      option.value = false;
+    else if (stream.tryConsumeIdentifier('true'))
+      option.value = true;
+    else if (option.value = stream.tryConsumeNumber());
+    else if (option.value = stream.tryConsumeString());
+    else
+      stream.error('Expecting boolean, integer or string.');
+    stream.consumePunctuation(';');
+    component.options.push(option);
+  }
+  stream.consumeIdentifier('id');
+  stream.consumePunctuation('=');
+  component.id = stream.consumeNumber();
+  stream.consumePunctuation(';');
   component.fields = [];
   component.events = [];
   while (!stream.tryConsumePunctuation('}')) {
-    // TODO: Allow stray semicolons?
-    // TODO: Can enums or types be nested inside components?
-    if (stream.tryConsumeIdentifier('option')) {
-      // TODO: Must options come first in a component?
-      const option = {};
-      option.name = stream.consumeIdentifier();
-      stream.consumePunctuation('=');
-      if (stream.tryConsumeIdentifier('false'))
-        option.value = false;
-      else if (stream.tryConsumeIdentifier('true'))
-        option.value = true;
-      else if (option.value = stream.tryConsumeNumber());
-      else if (option.value = stream.tryConsumeString());
-      else
-        stream.error('Expecting boolean, integer or string.');
-      stream.consumePunctuation(';');
-      component.options.push(option);
-    } else if (stream.tryConsumeIdentifier('id')) {
-      if (component.id !== undefined)
-        stream.error('Duplicate id definition for component.');
-      stream.consumePunctuation('=');
-      component.id = stream.consumeNumber();
-      stream.consumePunctuation(';');
-    } else if (stream.tryConsumeIdentifier('data')) {
+    if (stream.tryConsumeIdentifier('data')) {
       if (component.data !== undefined)
         stream.error('Duplicate data declaration for component.');
       component.data = parseTypeRef(stream);
