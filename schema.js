@@ -77,20 +77,18 @@ function parseComponent(stream) {
   component.name = stream.consumeIdentifier();
   stream.consumePunctuation('{');
   // TODO: Allow stray semicolons?
-  // TODO: Can enums or types be nested inside components?
-  // TODO: Must components come in the order: options, id, fields?
   component.options = [];
-  while (stream.tryConsumeIdentifier('option'))
-    component.options.push(parseOption(stream));
-  stream.consumeIdentifier('id');
-  stream.consumePunctuation('=');
-  component.id = stream.consumeNumber();
-  stream.consumePunctuation(';');
   component.fields = [];
   component.events = [];
   component.commands = [];
   while (!stream.tryConsumePunctuation('}')) {
-    if (stream.tryConsumeIdentifier('data')) {
+    if (stream.tryConsumeIdentifier('id')) {
+      if (component.id !== undefined)
+        stream.error('Duplicate id specified for component.');
+      stream.consumePunctuation('=');
+      component.id = stream.consumeNumber();
+      stream.consumePunctuation(';');
+    } else if (stream.tryConsumeIdentifier('data')) {
       if (component.data !== undefined)
         stream.error('Duplicate data declaration for component.');
       component.data = parseTypeRef(stream);
@@ -110,15 +108,22 @@ function parseComponent(stream) {
       stream.consumePunctuation(';');
       component.commands.push(command);
     } else {
-      const field = {};
-      field.type = parseTypeRef(stream);
-      field.name = stream.consumeIdentifier();
-      stream.consumePunctuation('=');
-      field.id = stream.consumeNumber();
-      stream.consumePunctuation(';');
-      component.fields.push(field);
+      const typeRef = parseTypeRef(stream, true);
+      if (typeRef === 'option')
+        component.options.push(parseOption(stream));
+      else {
+        const field = {};
+        field.type = typeRef;
+        field.name = stream.consumeIdentifier();
+        stream.consumePunctuation('=');
+        field.id = stream.consumeNumber();
+        stream.consumePunctuation(';');
+        component.fields.push(field);
+      }
     }
   }
+  if (component.id === undefined)
+    stream.error('Component missing id');
   return component;
 }
 
