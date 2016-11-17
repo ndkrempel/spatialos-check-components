@@ -7,6 +7,7 @@
 //     (See chalk, colors, cli-color, ansi, ansicolors, terminal-kit, manakin.)
 //     Configuration by command-line options, default auto-detect.
 //     Forked logging with different settings, including color setting?
+// TODO: Support SpatialOS 9 "spatialos.*.worker.json" files.
 
 'use strict';
 
@@ -71,29 +72,6 @@ if (projectSdkVersion[0] < 8)
       + ' the new schema format (SpatialOS 8 or later).\n'
       + 'The project\'s declared SDK version is %s.', stringifyVersion(projectSdkVersion));
 
-const schemaPath = path.join(projectPath, SCHEMA_DIR);
-assert(directoryExists(schemaPath), 'Schema directory not present');
-log('Scanning schema definitions...');
-let components = [];
-for (let [file, breadcrumbs] of readDirRecursive(schemaPath)) {
-  if (!breadcrumbs.last.endsWith(SCHEMA_EXT))
-    continue;
-  log('==> %s', breadcrumbs.join('/'));
-  // TODO: Is UTF-8 the right encoding?
-  const data = fs.readFileSync(file, 'utf8')
-  // TODO: Use schema.FileStream to avoid reading entire file into a string.
-  const s = schema.parse(new schema.StringStream(data));
-  for (const component of s.components)
-    log('  (%d) %s', component.id, s.package.concat(component.name).join('.'));
-  components = components.concat(s.components);
-}
-
-components.sort((x, y) => x.id - y.id);
-log('All components:');
-for (const component of components)
-  log('%d\t%s', component.id, component.name);
-log(groupRanges(components.map(_ => _.id)).map(r => r[0] + (r[0] !== r[1] ? '-' + r[1] : '')).join(', '));
-
 // spatialos_worker.json
 //  build_type: scala | unity
 //  build_assets: [gsim, scala_exe]
@@ -105,16 +83,111 @@ log(groupRanges(components.map(_ => _.id)).map(r => r[0] + (r[0] !== r[1] ? '-' 
 //        arguments: []
 //          ${IMPROBABLE_PROJECT_NAME}
 //          ${IMPROBABLE_PROJECT_ROOT}
-// GSim (Scala)
-// Scala?
-// Unity: worker, client (C#)
-// C?
-// C++
-// C#
-// Unreal?
-// Java
-// JavaScript
 // ...
+log('Workers:');
+const workers = [], workersPath = path.join(projectPath, WORKERS_DIR);
+for (let workerName of fs.readdirSync(workersPath)) {
+  const workerPath = path.join(workersPath, workerName);
+  if (!fs.statSync(workerPath).isDirectory())
+    continue;
+  let data;
+  try {
+    data = fs.readFileSync(path.join(workerPath, WORKER_FILE), 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT')
+      continue;
+    throw e;
+  }
+  const workerData = JSON.parse(data);
+  const worker = {
+    name: workerName,
+    languages: [],
+  };
+  switch (workerData.build_type) {
+    case 'scala':
+      worker.languages.push('Scala');
+      break;
+    case 'unity':
+      worker.languages.push('C#');
+      break;
+    case 'unreal':
+      worker.languages.push('C++');
+      break;
+    // TODO: C#, C++, (C, Java, JavaScript, ...?)
+    case undefined:
+      errorExit('Missing worker type for "%s".', workerName);
+    default:
+      errorExit('Unknown worker type for "%s": "%s".', workerName, workerData.build_type);
+  }
+  log('  %s (%s: %s)', workerName, workerData.build_type, worker.languages.join(', '));
+  workers.push(worker);
+  // TODO
+}
+if (!workers.length)
+  errorExit('No workers found. Ensure "%s" is present inside each worker directory.', WORKER_FILE);
+
+const schemaPath = path.join(projectPath, SCHEMA_DIR);
+assert(directoryExists(schemaPath), 'Schema directory not present');
+log('Scanning schema definitions...');
+let components = [];
+for (let [file, breadcrumbs] of readDirRecursive(schemaPath)) {
+  if (!breadcrumbs.last.endsWith(SCHEMA_EXT))
+    continue;
+  // log('==> %s', breadcrumbs.join('/'));
+  // TODO: Is UTF-8 the right encoding?
+  const data = fs.readFileSync(file, 'utf8')
+  // TODO: Use schema.FileStream to avoid reading entire file into a string.
+  const s = schema.parse(new schema.StringStream(data));
+  /*
+  for (const component of s.components)
+    log('  (%d) %s', component.id, s.package.concat(component.name).join('.'));
+  */
+  components = components.concat(s.components);
+}
+log('%d components found.', components.length);
+
+/*
+components.sort((x, y) => x.id - y.id);
+log('All components:');
+for (const component of components)
+  log('%d\t%s', component.id, component.name);
+log('ID ranges: %s.', groupRanges(components.map(_ => _.id)).map(r => r[0] + (r[0] !== r[1] ? '-' + r[1] : '')).join(', '));
+*/
+opchar           ::= // printableChar not matched by (
+                     // Lu Ll | Unicode_Sm | Unicode_So)
+function buildScalaRegExp(types) {
+  // This is only heuristic to avoid fully parsing Scala code.
+  // It doesn't use proper Unicode categories (Lu, Ll, Lo, Lt, Nl, Sm, So).
+  // It won't match imports using "`" escapes.
+  // It won't match importing piecemeal.
+  const WS = '\t\n\r ',
+      OP = '!#%&*+-/:<-@\\\\^|~\x7F';
+  const ID = `[\\w$]+(?:_[${OP}])?|[${OP}]+|\`(?:[^\\\\\`]|\\\\[\\w\\W])*\``;
+
+// Import            ::=  ‘import’ ImportExpr {‘,’ ImportExpr}
+// ImportExpr        ::=  StableId ‘.’ (id | ‘_’ | ImportSelectors)
+// ImportSelectors   ::=  ‘{’ {ImportSelector ‘,’} (ImportSelector | ‘_’) ‘}’
+// ImportSelector    ::=  id [‘=>’ id | ‘=>’ ‘_’]
+
+// Path              ::=  StableId
+//                     |  [id ‘.’] ‘this’
+// StableId          ::=  id
+//                     |  Path ‘.’ id
+//                     |  [id ‘.’] ‘super’ [ClassQualifier] ‘.’ id
+// ClassQualifier    ::=  ‘[’ id ‘]’
+
+  `(?:^|;|\\{|[^${OP}]=>)[${WS}]*import[${WS}]+<...>`
+  ImportExpr: `${StableId} \\. (?:${ID}|_|\{(?:${ImportSelector},)*(?:${ImportSelector|_})\})`
+  ImportSelector: `${ID}(?:=>(?:${ID}|_))?`
+  StableId: `${ID}|<StableId> \\. ${ID}|(?:${ID} \\.)? this \\. ${ID}|(?:${ID} \\.)? super (?:\\[${ID}\\])? \\. ${ID}`
+
+  // multiline
+  // TODO
+}
+
+function buildCSharpRegExp(types) {
+  // TODO
+}
 
 function isSpatialOSProject(projectPath = '') {
   return fileExists(path.resolve(projectPath, PROJECT_FILE));
