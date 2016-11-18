@@ -103,6 +103,12 @@ polyfillFunction(Array, function compare(lhs, rhs, compareFn = Reflect.compare) 
   return compare(lhsLen, rhsLen);
 });
 
+// Array#empty
+polyfillProperty(Array, function empty() {
+  const array = Reflect.toObject(this);
+  return !Reflect.toLength(array.length);
+});
+
 // Array#head
 polyfillProperty(Array, function head() {
   const array = Reflect.toObject(this);
@@ -121,6 +127,10 @@ polyfillProperty(Array, function last() {
       len = Reflect.toLength(array.length);
   array[len ? len - 1 : 0] = rhs;
 });
+
+// TODO:
+// String#padLeft, String#padRight
+// String#matchFull / RegExp#execAll
 
 // RegExp.escape
 polyfillFunction(RegExp, function escape(value) {
@@ -145,7 +155,7 @@ function polyfillMethod(class_, method) {
   });
 }
 
-function polyfillProperty(class_, getter, setter) {
+function polyfillProperty(class_, getter, setter = undefined) {
   return definePropertyIfMissing(class_.prototype, getter.name, {
     configurable: true,
     enumerable: false,
