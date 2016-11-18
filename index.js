@@ -221,7 +221,9 @@ for (const worker of workers) {
     }
   }
 }
-log('Done.')
+console.log('\b\r%s', ' '.repeat(79));  // TODO: Remove.
+console.log('\b\rDone.');  // TODO: Remove.
+// log('Done.')
 
 const COL_WIDTH = 32;
 log('');
