@@ -122,6 +122,11 @@ polyfillProperty(Array, function last() {
   array[len ? len - 1 : 0] = rhs;
 });
 
+// RegExp.escape
+polyfillFunction(RegExp, function escape(value) {
+  return value.replace(/[$(-+.?[-^{|}]/g, '\\$&');
+});
+
 function polyfillFunction(object, method) {
   return definePropertyIfMissing(object, method.name, {
     configurable: true,

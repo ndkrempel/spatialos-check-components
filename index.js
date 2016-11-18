@@ -155,15 +155,23 @@ log('ID ranges: %s.', groupRanges(components.map(_ => _.id)).map(r => r[0] + (r[
 */
 opchar           ::= // printableChar not matched by (
                      // Lu Ll | Unicode_Sm | Unicode_So)
-function buildScalaRegExp(types) {
+function checkForReferencesScala(text, types) {
+  // Temp hack:
+  const matches = [];
+  for (let [index, type] of types.entries())
+    if (RegExp('\b' + RegExp.escape(types.join('.')) + '\b').test(text))
+      matches.push(index);
+  return matches;
   // This is only heuristic to avoid fully parsing Scala code.
   // It doesn't use proper Unicode categories (Lu, Ll, Lo, Lt, Nl, Sm, So).
   // It won't match imports using "`" escapes.
   // It won't match importing piecemeal.
+  // 
+  // TODO: Strip comments.
   const WS = '\t\n\r ',
       OP = '!#%&*+-/:<-@\\\\^|~\x7F';
   const ID = `[\\w$]+(?:_[${OP}])?|[${OP}]+|\`(?:[^\\\\\`]|\\\\[\\w\\W])*\``;
-
+//`
 // Import            ::=  ‘import’ ImportExpr {‘,’ ImportExpr}
 // ImportExpr        ::=  StableId ‘.’ (id | ‘_’ | ImportSelectors)
 // ImportSelectors   ::=  ‘{’ {ImportSelector ‘,’} (ImportSelector | ‘_’) ‘}’
@@ -185,8 +193,13 @@ function buildScalaRegExp(types) {
   // TODO
 }
 
-function buildCSharpRegExp(types) {
-  // TODO
+function checkForReferencesCSharp(text, types) {
+  // Temp hack:
+  const matches = [];
+  for (let [index, type] of types.entries())
+    if (RegExp('\b' + RegExp.escape(types.join('.')) + '\b').test(text))
+      matches.push(index);
+  return matches;
 }
 
 function isSpatialOSProject(projectPath = '') {
