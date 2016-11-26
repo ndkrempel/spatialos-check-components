@@ -18,13 +18,13 @@ const COLLECTION_TYPES = [
   'map',
 ];
 
-// queryable
-// synchronized
+// - queryable
+// - synchronized
 
-// disable_fabric_codegen
-// disable_cpp_codegen
-// disable_csharp_codegen
-// disable_scala_codegen
+// - disable_fabric_codegen
+// - disable_cpp_codegen
+// - disable_csharp_codegen
+// - disable_scala_codegen
 
 function parse(stream) {
   return parseSchema(new TokenStream(tokenize(stream)));
@@ -32,12 +32,11 @@ function parse(stream) {
 
 function parseSchema(stream) {
   const schema = {};
-  let token;
   // TODO: Stray semicolons allowed?
   while (stream.tryConsumePunctuation(';'));
   stream.consumeIdentifier('package');
   schema.package = [];
-  packageLoop: for (;;) {
+  for (;;) {
     schema.package.push(stream.consumeIdentifier());
     if (stream.tryConsumePunctuation(';'))
       break;
@@ -142,7 +141,7 @@ function parseType(stream) {
     else if (stream.tryConsumeIdentifier('enum'))
       type.nested.push(parseEnum(stream));
     else {
-      let typeRef = parseTypeRef(stream, true);
+      const typeRef = parseTypeRef(stream, true);
       if (typeRef === 'option')
         type.options.push(parseOption(stream));
       else {
@@ -197,7 +196,7 @@ function parseTypeRef(stream, disambiguateOption = false) {
   for (name of PRIMITIVE_TYPES)
     if (stream.tryConsumeIdentifier(name))
       return {name};
-  if (name = (stream.tryConsumeIdentifier('option') || stream.tryConsumeIdentifier('list'))) {
+  if (name = stream.tryConsumeIdentifier('option') || stream.tryConsumeIdentifier('list')) {
     // Special case for "option" as it could also be the start of an option.
     if (disambiguateOption && name === 'option') {
       if (!stream.tryConsumePunctuation('<'))
@@ -239,11 +238,12 @@ class TokenStream {
   consumeIdentifier(value = undefined) {
     const result = this.tryConsumeIdentifier(value);
     if (result === undefined)
-      this.error(value === undefined ? 'Expecting identifier.' : 'Expecting identifier "' + value + '".');
+      this.error(value === undefined ? 'Expecting identifier.' : `Expecting identifier "${value}".`);
     return result;
   }
   tryConsumeIdentifier(value = undefined) {
-    if (this.next_ && this.next_.type === Token.IDENTIFIER && (value === undefined || this.next_.value === value))
+    if (this.next_ && this.next_.type === Token.IDENTIFIER
+        && (value === undefined || this.next_.value === value))
       return this.consume().value;
   }
   consumeNumber() {
@@ -269,11 +269,12 @@ class TokenStream {
   consumePunctuation(value = undefined) {
     const result = this.tryConsumePunctuation(value);
     if (result === undefined)
-      this.error(value === undefined ? 'Expecting punctuation.' : 'Expecting "' + value + '".');
+      this.error(value === undefined ? 'Expecting punctuation.' : `Expecting "${value}".`);
     return result;
   }
   tryConsumePunctuation(value = undefined) {
-    if (this.next_ && this.next_.type === Token.PUNCTUATION && (value === undefined || this.next_.value === value))
+    if (this.next_ && this.next_.type === Token.PUNCTUATION
+        && (value === undefined || this.next_.value === value))
       return this.consume().value;
   }
   error(message) { throw Error(message); }
@@ -286,10 +287,10 @@ const Token = {
   PUNCTUATION: 3,
 };
 
-function* tokenize(stream) {
+function *tokenize(stream) {
   for (;;) {
     let result;
-    stream.consume(/\s*/); // stream.consumeAll(/\s/);
+    stream.consume(/\s*/);
     if (stream.eof())
       break;
     else if (stream.consume('//'))
@@ -299,41 +300,41 @@ function* tokenize(stream) {
       stream.consumeUntil('*/') || stream.error('Reached end of stream while in block comment.');
     else if (stream.consume('"'))
       yield {
-        type: Token.STRING,
+        type:  Token.STRING,
         value: Array.from(consumeString(stream)).join(''),
       };
     else if (result = stream.consume(/[A-Za-z_]\w*/))
       yield {
-        type: Token.IDENTIFIER,
+        type:  Token.IDENTIFIER,
         value: result[0],
       };
     else if (result = stream.consume(/[0-9]\w*/)) {
-      // TODO: Can numbers contain "+", "-", ".", "e", ...? Have leading "0"? "x"?
+      // TODO: Can numbers contain "+", "-", ".", "e", ...? Leading "0"? "x"?
       // TODO: Cope with numbers > 2**52.
       if (result[0] !== '0' && !/[1-9]\d{0,19}/.test(result[0]))
         stream.error('Bad number.');
       yield {
-        type: Token.NUMBER,
+        type:  Token.NUMBER,
         value: parseInt(result[0], 10),
-      }
+      };
     }
     else if (result = stream.consume(/[,.;<=>{}]/))
       // Or allow any ASCII punctuation? /[!#-\/:-@[-^`{-~]/
       yield {
-        type: Token.PUNCTUATION,
+        type:  Token.PUNCTUATION,
         value: result[0],
       };
     else
       stream.error('Unexpected input.');
   }
 
-  function* consumeString(stream) {
+  function *consumeString(stream) {
     for (;;) {
       const {which, inner} = stream.consumeUntil('"', '\\') || stream.error('Reached end of stream while in string.');
       yield inner;
       if (which === 0)
         break;
-      yield result.consume(/[\w\W]/)[0];
+      yield stream.consume(/[\w\W]/)[0];
     }
   }
 }
@@ -401,7 +402,8 @@ class StringStream extends Stream {
     }
     if (firstMatch !== null) {
       firstMatch.inner = this.data_.substring(0, firstMatch.index);
-      this.data_ = this.data_.substring(firstMatch.index + firstMatch[0].length);
+      this.data_ = this.data_.substring(
+          firstMatch.index + firstMatch[0].length);
     }
     // TODO: firstMatch.outer
     return firstMatch;
@@ -414,7 +416,8 @@ class StringStream extends Stream {
         if (Reflect.isRegExp(pattern)) {
           const match = regExpExecStart(this.data_, pattern);
           if (match && match[0]) {
-            // TODO: Check lastIndex is still in code units when unicode flag set.
+            // TODO: Check lastIndex is still in code units when unicode flag
+            // set.
             accumulator += this.data_.substring(0, match[0].length);
             this.data_ = this.data_.substring(match[0].length);
             continue outer;
@@ -432,7 +435,7 @@ class StringStream extends Stream {
     }
   }
   error(message) {
-    super.error(message + '\n  "' + this.data_.match(/^[^\n]{0,30}/)[0] + '"...\n   ^');
+    super.error(`${message}\n  "${this.data_.match(/^[^\n]{0,30}/)[0]}"...\n   ^`);
   }
 }
 
@@ -445,17 +448,6 @@ function regExpExecStart(string, regExp) {
   if (!flags.includes('y'))
     flags += 'y';
   return RegExp(regExp.source, flags).exec(string);
-}
-
-// TODO: Remove.
-function* tap(iterator) {
-  for (;;) {
-    const next = iterator.next();
-    console.log('%j', next);
-    if (next.done)
-      return next.value;
-    yield next.value;
-  }
 }
 
 module.exports = {

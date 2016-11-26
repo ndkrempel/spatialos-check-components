@@ -14,7 +14,8 @@ polyfillFunction(Reflect, function toInteger(value) {
 // Reflect.toLength
 polyfillFunction(Reflect, function toLength(value) {
   value = Reflect.toInteger(value);
-  return value <= 0 ? 0 : value > Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : value;
+  return value <= 0 ? 0
+      : value > Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : value;
 });
 
 // Reflect.isObject
@@ -61,7 +62,8 @@ polyfillFunction(Reflect, function isRegExp(value) {
   const match = value[Symbol.match];
   if (match !== undefined)
     return !!match;
-  // The following test needs RegExp#compile to be present, which is only guaranteed in web browser environments.
+  // The following test needs RegExp#compile to be present, which is only
+  // guaranteed in web browser environments.
   const prop = Object.getOwnPropertyDescriptor(value, 'lastIndex');
   if (prop.configurable || !prop.hasOwnProperty('value'))
     return false;
@@ -72,15 +74,16 @@ polyfillFunction(Reflect, function isRegExp(value) {
     compile.call(value, value);
   } catch (e) {
     if (e instanceof TypeError) {
-      // The following assumes a standard error message for assigning to a read only property.
-      if (!prop.writable && e.message.startsWith('Cannot assign to read only property'))
-        return true;
-      return false;
+      // The following assumes a standard error message for assigning to a
+      // read-only property.
+      return !prop.writable
+          && e.message.startsWith('Cannot assign to read only property');
     }
     throw e;
   }
   return true;
-  // The following check is not correct in the presence of @@toStringTag overrides.
+  // The following check is not correct in the presence of @@toStringTag
+  // overrides.
   // return Reflect.getTag(value) === 'RegExp';
 });
 
@@ -90,7 +93,8 @@ polyfillFunction(Reflect, function compare(lhs, rhs) {
 });
 
 // Array.compare
-polyfillFunction(Array, function compare(lhs, rhs, compareFn = Reflect.compare) {
+polyfillFunction(Array,
+    function compare(lhs, rhs, compareFn = Reflect.compare) {
   lhs = Reflect.toObject(lhs);
   rhs = Reflect.toObject(rhs);
   const lhsLen = Reflect.toLength(lhs.length),
@@ -105,25 +109,25 @@ polyfillFunction(Array, function compare(lhs, rhs, compareFn = Reflect.compare) 
 
 // Array#empty
 polyfillProperty(Array, function empty() {
-  const array = Reflect.toObject(this);
+  const array = Reflect.toObject(this);  // eslint-disable-line no-invalid-this
   return !Reflect.toLength(array.length);
 });
 
 // Array#head
 polyfillProperty(Array, function head() {
-  const array = Reflect.toObject(this);
+  const array = Reflect.toObject(this);  // eslint-disable-line no-invalid-this
   return Reflect.toLength(array.length) ? array[0] : undefined;
 }, function head(rhs) {
-  Reflect.toObject(this)[0] = rhs;
+  Reflect.toObject(this)[0] = rhs;  // eslint-disable-line no-invalid-this
 });
 
 // Array#last
 polyfillProperty(Array, function last() {
-  const array = Reflect.toObject(this),
+  const array = Reflect.toObject(this),  // eslint-disable-line no-invalid-this
       len = Reflect.toLength(array.length);
   return len ? array[len - 1] : undefined;
 }, function last(rhs) {
-  const array = Reflect.toObject(this),
+  const array = Reflect.toObject(this),  // eslint-disable-line no-invalid-this
       len = Reflect.toLength(array.length);
   array[len ? len - 1 : 0] = rhs;
 });
@@ -140,27 +144,27 @@ polyfillFunction(RegExp, function escape(value) {
 function polyfillFunction(object, method) {
   return definePropertyIfMissing(object, method.name, {
     configurable: true,
-    enumerable: false,
-    writable: true,
-    value: method,
+    enumerable:   false,
+    writable:     true,
+    value:        method,
   });
 }
 
 function polyfillMethod(class_, method) {
   return definePropertyIfMissing(class_.prototype, method.name, {
     configurable: true,
-    enumerable: false,
-    writable: true,
-    value: method,
+    enumerable:   false,
+    writable:     true,
+    value:        method,
   });
 }
 
 function polyfillProperty(class_, getter, setter = undefined) {
   return definePropertyIfMissing(class_.prototype, getter.name, {
     configurable: true,
-    enumerable: false,
-    get: getter,
-    set: setter,
+    enumerable:   false,
+    get:          getter,
+    set:          setter,
   });
 }
 

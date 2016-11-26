@@ -1,7 +1,6 @@
 #!/usr/bin/env node --throw-deprecation --use_strict
 
 // TODO: Setup linting, preprocessing, compiling/minifying, testing.
-// TODO: Add missing fields to "package.json".
 // TODO: Use Winston/Bunyan for logging.
 // TODO: ANSI color with custom string literal.
 //     (See chalk, colors, cli-color, ansi, ansicolors, terminal-kit, manakin.)
@@ -11,7 +10,7 @@
 
 'use strict';
 
-const assert  = require('assert'),
+const assert = require('assert'),
     util = require('util'),
     promisify = require('promisify-node'),  // TODO: Unused?
     path = require('path'),
@@ -30,33 +29,33 @@ const PROJECT_FILE = 'spatialos.json',
     GSIM_WORKER = 'gsim';
 
 const Language = {
-  SCALA: 'Scala',
+  SCALA:  'Scala',
   CSHARP: 'C#',
-  CPP: 'C++',
+  CPP:    'C++',
 };
 
 const LANGUAGE_DATA = {
   [Language.SCALA]: {
     extensions: ['.scala'],
-    apiTypes: ['', 'Descriptor', 'Writer', 'Updater', 'Update', 'Watcher'],
-    checker: checkForReferencesScala,
+    apiTypes:   ['', 'Descriptor', 'Writer', 'Updater', 'Update', 'Watcher'],
+    checker:    checkForReferencesScala,
   },
   [Language.CSHARP]: {
     extensions: ['.cs'],
-    apiTypes: ['', '_Extensions', 'Writer', 'Reader'],
-    checker: checkForReferencesCSharp,
+    apiTypes:   ['', '_Extensions', 'Writer', 'Reader'],
+    checker:    checkForReferencesCSharp,
   },
   [Language.CPP]: {
     extensions: ['.cc', '.h'],
-    apiTypes: [''],
-    checker: checkForReferencesCpp,
+    apiTypes:   [''],
+    checker:    checkForReferencesCpp,
   },
 };
 
 program.version('1.0.0')
-  .description('Tool for checking component usage in a SpatialOS project.')
-  .arguments('[project_path]')
-  .parse(process.argv);
+    .description('Tool for checking component usage in a SpatialOS project.')
+    .arguments('[project_path]')
+    .parse(process.argv);
 
 if (program.args.length > 1) {
   program.outputHelp();
@@ -65,7 +64,7 @@ if (program.args.length > 1) {
 
 const projectPath = (() => {
   if (!program.args.empty) {
-    let path = program.args[0];
+    const path = program.args[0];
     if (!directoryExists(path))
       errorExit('Fatal error: specified path "%s" does not exist or is not a directory.', path);
     if (!isSpatialOSProject(path))
@@ -73,12 +72,13 @@ const projectPath = (() => {
           + ' (missing "%s" file).', path, PROJECT_FILE);
     return path;
   } else {
-    let path = findSpatialOSProject();
+    const path = findSpatialOSProject();
     if (path == null)
       errorExit('Fatal error: could not find SpatialOS project.\n'
           + 'Run this tool from within a SpatialOS project directory tree'
           + ' (indicated by the presence of a "%s" file),'
           + ' or specify the path to the project root as an argument.', PROJECT_FILE);
+    return path;
   }
 })();
 log('Using SpatialOS project at "%s".', projectPath);
@@ -88,8 +88,8 @@ assert(project.hasOwnProperty('name') && typeof project['name'] === 'string', 'M
 assert(project.hasOwnProperty('project_version') && typeof project['project_version'] === 'string', 'Missing project version');
 assert(project.hasOwnProperty('sdk_version') && typeof project['sdk_version'] === 'string', 'Missing project SDK version');
 const projectName = project['name'],
-  projectVersion = project['project_version'],
-  projectSdkVersion = parseVersion(project['sdk_version']);
+    projectVersion = project['project_version'],
+    projectSdkVersion = parseVersion(project['sdk_version']);
 assert(projectSdkVersion, 'Invalid project SDK version');
 log('Name:           %s', projectName);
 log('Version:        %s', projectVersion);
@@ -100,18 +100,20 @@ if (projectSdkVersion[0] < 8)
       + ' the new schema format (SpatialOS 8 or later).\n'
       + 'The project\'s declared SDK version is %s.', stringifyVersion(projectSdkVersion));
 
-// spatialos_worker.json
-//  build_type: scala | unity
-//  build_assets: [gsim, scala_exe]
-//  generate_build_scripts: boolean
-//  launch
-//    <configuration>
-//      <os> (windows | mac)
-//        command:
-//        arguments: []
-//          ${IMPROBABLE_PROJECT_NAME}
-//          ${IMPROBABLE_PROJECT_ROOT}
-// ...
+/*
+Worker JSON format (spatialos_worker.json):
+  build_type: scala | unity
+  build_assets: [gsim, scala_exe]
+  generate_build_scripts: boolean
+  launch
+    <configuration>
+      <os> (windows | mac)
+        command:
+        arguments: []
+          ${IMPROBABLE_PROJECT_NAME}
+          ${IMPROBABLE_PROJECT_ROOT}
+  ...
+*/
 log('Workers:');
 const workers = [], workersPath = path.join(projectPath, WORKERS_DIR);
 for (const workerName of fs.readdirSync(workersPath)) {
@@ -128,7 +130,7 @@ for (const workerName of fs.readdirSync(workersPath)) {
   }
   const workerData = JSON.parse(data);
   const worker = {
-    name: workerName,
+    name:      workerName,
     languages: [],
   };
   switch (workerData.build_type) {
@@ -163,15 +165,11 @@ let components = [];
 for (const [file, breadcrumbs] of readDirRecursive(schemaPath)) {
   if (!breadcrumbs.last.endsWith(SCHEMA_EXT))
     continue;
-  // log('==> %s', breadcrumbs.join('/'));
+  // TODO: log('==> %s', breadcrumbs.join('/'));
   // TODO: Is UTF-8 the right encoding?
-  const data = fs.readFileSync(file, 'utf8')
+  const data = fs.readFileSync(file, 'utf8');
   // TODO: Use schema.FileStream to avoid reading entire file into a string.
   const s = schema.parse(new schema.StringStream(data));
-  /*
-  for (const component of s.components)
-    log('  (%d) %s', component.id, s.package.concat(component.name).join('.'));
-  */
   for (const component of s.components)
     component.package = s.package;
   components = components.concat(s.components);
@@ -179,7 +177,7 @@ for (const [file, breadcrumbs] of readDirRecursive(schemaPath)) {
 log('%d components found.', components.length);
 
 components.sort((x, y) => x.id - y.id);
-/*
+/* TODO
 log('All components:');
 for (const component of components)
   log('%d\t%s', component.id, component.name);
@@ -210,12 +208,14 @@ for (const worker of workers) {
       dirFilter = (_, breadcrumbs) => !GENERATED_DIRS.includes(breadcrumbs.last);
   for (const [file, breadcrumbs] of readDirRecursive(workerPath, dirFilter)) {
     for (const language of worker.languages) {
-      if (!LANGUAGE_DATA[language].extensions.some(_ => breadcrumbs.last.endsWith(_)))
+      if (!LANGUAGE_DATA[language].extensions.some(
+          _ => breadcrumbs.last.endsWith(_)))
         continue;
       console.log('\b\r%s', ' '.repeat(79));  // TODO: Remove.
       console.log('\b\r%s', file.slice(-79));  // TODO: Remove.
-      const data = fs.readFileSync(file, 'utf8')
-      const indices = LANGUAGE_DATA[language].checker(data, types[language].list);
+      const data = fs.readFileSync(file, 'utf8');
+      const indices = LANGUAGE_DATA[language].checker(data,
+          types[language].list);
       for (const i of indices)
         components[types[language].revMap[i]].workers.add(worker.name);
     }
@@ -227,7 +227,7 @@ console.log('\b\rDone.');  // TODO: Remove.
 
 const COL_WIDTH = 32;
 log('');
-log('%s | %s | %s', (' '.repeat(6) + 'ID').slice(-6), (' '.repeat(COL_WIDTH) + 'Component').slice(-COL_WIDTH), 'Workers');
+log('%s | %s | %s', (' '.repeat(6) + 'ID').slice(-6), `${' '.repeat(COL_WIDTH)}Component`.slice(-COL_WIDTH), 'Workers');
 log('%s-+-%s-+-%s', '-'.repeat(6), '-'.repeat(COL_WIDTH), '-'.repeat(COL_WIDTH));
 for (const component of components) {
   const abbrevName = component.package.map(_ => _[0]).concat(component.name).join('.')
@@ -267,10 +267,10 @@ function checkForReferencesScala(text, types) {
     package_ = match[1].split('.').map(_ => _.trim());
   const imports = [], importRegExp = /(?:^|;|\{)\s*import\s+([^;\n]+)(?:$|;)/gm;
   for (let i = 1; i <= package_.length; ++i)
-    imports.push(package_.slice(0, i).join('.') + '.');
+    imports.push(`${package_.slice(0, i).join('.')}.`);
   function addImport(import_) {
     for (let i = 0; i <= package_.length; ++i)
-      imports.push(package_.slice(0, i).map(_ => _ + '.').join('') + import_);
+      imports.push(package_.slice(0, i).map(_ => `${_}.`).join('') + import_);
   }
   while (match = importRegExp.exec(text)) {
     const import_ = match[1],
@@ -300,7 +300,7 @@ function checkForReferencesScala(text, types) {
     for (const import_ of imports)
       if (typeName === import_ || import_.endsWith('.') && typeName.startsWith(import_) && import_.length > prefix)
         prefix = import_.length;
-    if (prefix === typeName.length || RegExp('\\b' + RegExp.escape(typeName.substring(prefix)) + '\\b').test(text))
+    if (prefix === typeName.length || RegExp(`\\b${RegExp.escape(typeName.substring(prefix))}\\b`).test(text))
       matches.push(index);
   }
   return matches;
@@ -311,10 +311,11 @@ function checkForReferencesScala(text, types) {
   // It won't match importing piecemeal.
   //
   // TODO: Strip comments.
+/* TODO
   const WS = '\t\n\r ',
       OP = '!#%&*+-/:<-@\\\\^|~\x7F';
   const ID = `[\\w$]+(?:_[${OP}])?|[${OP}]+|\`(?:[^\\\\\`]|\\\\[\\w\\W])*\``;
-//`
+*/
 // Import            ::=  ‘import’ ImportExpr {‘,’ ImportExpr}
 // ImportExpr        ::=  StableId ‘.’ (id | ‘_’ | ImportSelectors)
 // ImportSelectors   ::=  ‘{’ {ImportSelector ‘,’} (ImportSelector | ‘_’) ‘}’
@@ -326,7 +327,7 @@ function checkForReferencesScala(text, types) {
 //                     |  Path ‘.’ id
 //                     |  [id ‘.’] ‘super’ [ClassQualifier] ‘.’ id
 // ClassQualifier    ::=  ‘[’ id ‘]’
-/*
+/* TODO
   `(?:^|;|\\{|[^${OP}]=>)[${WS}]*import[${WS}]+<...>`
   ImportExpr: `${StableId} \\. (?:${ID}|_|\{(?:${ImportSelector},)*(?:${ImportSelector|_})\})`
   ImportSelector: `${ID}(?:=>(?:${ID}|_))?`
@@ -471,7 +472,8 @@ function wordWrap(text, width = 79) {
 }
 
 function groupRanges(integers) {
-  let ranges = [], start, end;
+  const ranges = [];
+  let start, end;
   for (const i of integers)
     if (start !== undefined && i === end + 1)
       ++end;
