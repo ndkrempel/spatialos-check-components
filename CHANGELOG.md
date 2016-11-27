@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## [1.0.0] - 2016-11-26
 ### Added
 - YOLO Scala and C# parsing.
+- Linting (trying out [ESLint], [JSHint] and [JSCS]).
 
 ## 0.0.0 - 2016-11-12
 ### Added
@@ -16,3 +17,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 [Unreleased]: https://github.com/ndkrempel/spatialos-check-components/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/ndkrempel/spatialos-check-components/compare/v0.0.0...1.0.0
+[ESLint]: http://eslint.org/
+[JSHint]: http://jshint.com/
+[JSCS]: http://jscs.info/
