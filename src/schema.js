@@ -196,7 +196,8 @@ function parseTypeRef(stream, disambiguateOption = false) {
   for (name of PRIMITIVE_TYPES)
     if (stream.tryConsumeIdentifier(name))
       return {name};
-  if (name = stream.tryConsumeIdentifier('option') || stream.tryConsumeIdentifier('list')) {
+  if (name = stream.tryConsumeIdentifier('option')
+      || stream.tryConsumeIdentifier('list')) {
     // Special case for "option" as it could also be the start of an option.
     if (disambiguateOption && name === 'option') {
       if (!stream.tryConsumePunctuation('<'))
@@ -238,7 +239,8 @@ class TokenStream {
   consumeIdentifier(value = undefined) {
     const result = this.tryConsumeIdentifier(value);
     if (result === undefined)
-      this.error(value === undefined ? 'Expecting identifier.' : `Expecting identifier "${value}".`);
+      this.error(value === undefined ? 'Expecting identifier.'
+          : `Expecting identifier "${value}".`);
     return result;
   }
   tryConsumeIdentifier(value = undefined) {
@@ -269,7 +271,8 @@ class TokenStream {
   consumePunctuation(value = undefined) {
     const result = this.tryConsumePunctuation(value);
     if (result === undefined)
-      this.error(value === undefined ? 'Expecting punctuation.' : `Expecting "${value}".`);
+      this.error(value === undefined ? 'Expecting punctuation.'
+          : `Expecting "${value}".`);
     return result;
   }
   tryConsumePunctuation(value = undefined) {
@@ -297,7 +300,8 @@ function *tokenize(stream) {
       // TODO: Can newlines be escaped?
       stream.consumeUntil('\n', /$/);
     else if (stream.consume('/*'))
-      stream.consumeUntil('*/') || stream.error('Reached end of stream while in block comment.');
+      stream.consumeUntil('*/')
+          || stream.error('Reached end of stream while in block comment.');
     else if (stream.consume('"'))
       yield {
         type:  Token.STRING,
@@ -317,8 +321,7 @@ function *tokenize(stream) {
         type:  Token.NUMBER,
         value: parseInt(result[0], 10),
       };
-    }
-    else if (result = stream.consume(/[,.;<=>{}]/))
+    } else if (result = stream.consume(/[,.;<=>{}]/))
       // Or allow any ASCII punctuation? /[!#-\/:-@[-^`{-~]/
       yield {
         type:  Token.PUNCTUATION,
@@ -330,7 +333,8 @@ function *tokenize(stream) {
 
   function *consumeString(stream) {
     for (;;) {
-      const {which, inner} = stream.consumeUntil('"', '\\') || stream.error('Reached end of stream while in string.');
+      const {which, inner} = stream.consumeUntil('"', '\\')
+          || stream.error('Reached end of stream while in string.');
       yield inner;
       if (which === 0)
         break;
@@ -435,7 +439,8 @@ class StringStream extends Stream {
     }
   }
   error(message) {
-    super.error(`${message}\n  "${this.data_.match(/^[^\n]{0,30}/)[0]}"...\n   ^`);
+    super.error(
+        `${message}\n  "${this.data_.match(/^[^\n]{0,30}/)[0]}"...\n   ^`);
   }
 }
 
@@ -444,7 +449,7 @@ class FileStream extends Stream {
 }
 
 function regExpExecStart(string, regExp) {
-  let flags = regExp.flags;
+  let {flags} = regExp;
   if (!flags.includes('y'))
     flags += 'y';
   return RegExp(regExp.source, flags).exec(string);

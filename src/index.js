@@ -64,29 +64,36 @@ if (program.args.length > 1) {
 
 const projectPath = (() => {
   if (!program.args.empty) {
-    const path = program.args[0];
+    const [path] = program.args;
     if (!directoryExists(path))
-      errorExit('Fatal error: specified path "%s" does not exist or is not a directory.', path);
+      throw errorExit('Fatal error: specified path "%s" does not exist or is not a directory.', path);
     if (!isSpatialOSProject(path))
-      errorExit('Fatal error: specified path "%s" is not a SpatialOS project directory'
+      throw errorExit('Fatal error: specified path "%s" is not a SpatialOS project directory'
           + ' (missing "%s" file).', path, PROJECT_FILE);
     return path;
   } else {
     const path = findSpatialOSProject();
     if (path == null)
-      errorExit('Fatal error: could not find SpatialOS project.\n'
+      throw errorExit('Fatal error: could not find SpatialOS project.\n'
           + 'Run this tool from within a SpatialOS project directory tree'
           + ' (indicated by the presence of a "%s" file),'
-          + ' or specify the path to the project root as an argument.', PROJECT_FILE);
+          + ' or specify the path to the project root as an argument.',
+          PROJECT_FILE);
     return path;
   }
 })();
 log('Using SpatialOS project at "%s".', projectPath);
 
-const project = JSON.parse(fs.readFileSync(path.join(projectPath, PROJECT_FILE), 'utf8'));
-assert(project.hasOwnProperty('name') && typeof project['name'] === 'string', 'Missing project name');
-assert(project.hasOwnProperty('project_version') && typeof project['project_version'] === 'string', 'Missing project version');
-assert(project.hasOwnProperty('sdk_version') && typeof project['sdk_version'] === 'string', 'Missing project SDK version');
+const project = JSON.parse(fs.readFileSync(
+    path.join(projectPath, PROJECT_FILE), 'utf8'));
+assert(project.hasOwnProperty('name') && typeof project['name'] === 'string',
+    'Missing project name');
+assert(project.hasOwnProperty('project_version')
+    && typeof project['project_version'] === 'string',
+    'Missing project version');
+assert(project.hasOwnProperty('sdk_version')
+    && typeof project['sdk_version'] === 'string',
+    'Missing project SDK version');
 const projectName = project['name'],
     projectVersion = project['project_version'],
     projectSdkVersion = parseVersion(project['sdk_version']);
@@ -96,9 +103,10 @@ log('Version:        %s', projectVersion);
 log('SDK version:    %s', stringifyVersion(projectSdkVersion));
 // TODO: Support earlier SpatialOS versions.
 if (projectSdkVersion[0] < 8)
-  errorExit('Fatal error: this tool only supports projects using'
+  throw errorExit('Fatal error: this tool only supports projects using'
       + ' the new schema format (SpatialOS 8 or later).\n'
-      + 'The project\'s declared SDK version is %s.', stringifyVersion(projectSdkVersion));
+      + 'The project\'s declared SDK version is %s.',
+      stringifyVersion(projectSdkVersion));
 
 /*
 Worker JSON format (spatialos_worker.json):
@@ -133,7 +141,7 @@ for (const workerName of fs.readdirSync(workersPath)) {
     name:      workerName,
     languages: [],
   };
-  switch (workerData.build_type) {
+  switch (workerData['build_type']) {
     case 'scala':
       worker.languages.push(Language.SCALA);
       break;
@@ -145,18 +153,20 @@ for (const workerName of fs.readdirSync(workersPath)) {
       break;
     // TODO: C#, C++, (C, Java, JavaScript, ...?)
     case undefined:
-      errorExit('Missing worker type for "%s".', workerName);
+      throw errorExit('Missing worker type for "%s".', workerName);
     default:
-      errorExit('Unknown worker type for "%s": "%s".', workerName, workerData.build_type);
+      throw errorExit('Unknown worker type for "%s": "%s".', workerName,
+          workerData['build_type']);
   }
-  log('  %s (%s: %s)', workerName, workerData.build_type, worker.languages.join(', '));
+  log('  %s (%s: %s)', workerName, workerData['build_type'],
+      worker.languages.join(', '));
   workers.push(worker);
   // TODO
 }
 if (workers.empty)
-  errorExit('No workers found. Ensure "%s" is present inside each worker directory.', WORKER_FILE);
+  throw errorExit('No workers found. Ensure "%s" is present inside each worker directory.', WORKER_FILE);
 if (!workers.some(_ => _.name === GSIM_WORKER))
-  errorExit('GSim worker not found. Ensure a worker directory named "%s" is present and contains a "%s" file.', GSIM_WORKER, WORKER_FILE);
+  throw errorExit('GSim worker not found. Ensure a worker directory named "%s" is present and contains a "%s" file.', GSIM_WORKER, WORKER_FILE);
 
 const schemaPath = path.join(projectPath, SCHEMA_DIR);
 assert(directoryExists(schemaPath), 'Schema directory not present');
@@ -186,7 +196,7 @@ log('ID ranges: %s.', groupRanges(components.map(_ => _.id)).map(r => r[0] + (r[
 
 const types = {};
 for (const language of Object.values(Language)) {
-  const apiTypes = LANGUAGE_DATA[language].apiTypes;
+  const {apiTypes} = LANGUAGE_DATA[language];
   const list = [], revMap = [];
   components.forEach((c, i) => apiTypes.forEach(t => {
     list.push(c.package.concat(c.name + t));
@@ -205,7 +215,8 @@ for (const worker of workers) {
   console.log('\b\r  %s', worker.name);
   console.log();  // TODO: Remove.
   const workerPath = path.join(workersPath, worker.name),
-      dirFilter = (_, breadcrumbs) => !GENERATED_DIRS.includes(breadcrumbs.last);
+      dirFilter = (_, breadcrumbs) =>
+      !GENERATED_DIRS.includes(breadcrumbs.last);
   for (const [file, breadcrumbs] of readDirRecursive(workerPath, dirFilter)) {
     for (const language of worker.languages) {
       if (!LANGUAGE_DATA[language].extensions.some(
@@ -227,10 +238,11 @@ console.log('\b\rDone.');  // TODO: Remove.
 
 const COL_WIDTH = 32;
 log('');
-log('%s | %s | %s', (' '.repeat(6) + 'ID').slice(-6), `${' '.repeat(COL_WIDTH)}Component`.slice(-COL_WIDTH), 'Workers');
+log('%s | %s | %s', `${' '.repeat(6)}ID`.slice(-6), `${' '.repeat(COL_WIDTH)}Component`.slice(-COL_WIDTH), 'Workers');
 log('%s-+-%s-+-%s', '-'.repeat(6), '-'.repeat(COL_WIDTH), '-'.repeat(COL_WIDTH));
 for (const component of components) {
-  const abbrevName = component.package.map(_ => _[0]).concat(component.name).join('.')
+  const abbrevName = component.package.map(_ => _[0]).concat(component.name)
+      .join('.');
   log('%s | %s | %s',
       (' '.repeat(6) + component.id).slice(-6),
       (' '.repeat(COL_WIDTH) + abbrevName).slice(-COL_WIDTH),
@@ -248,9 +260,11 @@ for (const component of components) {
     log('Component "%s" not used by GSim.', fullName);
     continue;
   }
-  const sync = !component.options.some(_ => _.name === 'synchronized' && _.value === false);
+  const sync = !component.options.some(_ =>
+      _.name === 'synchronized' && _.value === false);
   if (!sync && component.workers.size !== 1) {
-    log('Component "%s" used by non-GSim workers but not synchronized.', fullName);
+    log('Component "%s" used by non-GSim workers but not synchronized.',
+        fullName);
     continue;
   }
   if (sync && component.workers.size === 1) {
@@ -273,7 +287,7 @@ function checkForReferencesScala(text, types) {
       imports.push(package_.slice(0, i).map(_ => `${_}.`).join('') + import_);
   }
   while (match = importRegExp.exec(text)) {
-    const import_ = match[1],
+    const [, import_] = match,
         pos = import_.lastIndexOf('.');
     if (pos < 0)
       continue;
@@ -298,9 +312,12 @@ function checkForReferencesScala(text, types) {
     const typeName = type.join('.');
     let prefix = 0;
     for (const import_ of imports)
-      if (typeName === import_ || import_.endsWith('.') && typeName.startsWith(import_) && import_.length > prefix)
+      if (typeName === import_ || import_.endsWith('.')
+          && typeName.startsWith(import_) && import_.length > prefix)
         prefix = import_.length;
-    if (prefix === typeName.length || RegExp(`\\b${RegExp.escape(typeName.substring(prefix))}\\b`).test(text))
+    if (prefix === typeName.length
+        || RegExp(`\\b${RegExp.escape(typeName.substring(prefix))}\\b`)
+        .test(text))
       matches.push(index);
   }
   return matches;
@@ -311,29 +328,31 @@ function checkForReferencesScala(text, types) {
   // It won't match importing piecemeal.
   //
   // TODO: Strip comments.
-/* TODO
-  const WS = '\t\n\r ',
-      OP = '!#%&*+-/:<-@\\\\^|~\x7F';
-  const ID = `[\\w$]+(?:_[${OP}])?|[${OP}]+|\`(?:[^\\\\\`]|\\\\[\\w\\W])*\``;
-*/
-// Import            ::=  ‘import’ ImportExpr {‘,’ ImportExpr}
-// ImportExpr        ::=  StableId ‘.’ (id | ‘_’ | ImportSelectors)
-// ImportSelectors   ::=  ‘{’ {ImportSelector ‘,’} (ImportSelector | ‘_’) ‘}’
-// ImportSelector    ::=  id [‘=>’ id | ‘=>’ ‘_’]
 
-// Path              ::=  StableId
-//                     |  [id ‘.’] ‘this’
-// StableId          ::=  id
-//                     |  Path ‘.’ id
-//                     |  [id ‘.’] ‘super’ [ClassQualifier] ‘.’ id
-// ClassQualifier    ::=  ‘[’ id ‘]’
-/* TODO
-  `(?:^|;|\\{|[^${OP}]=>)[${WS}]*import[${WS}]+<...>`
-  ImportExpr: `${StableId} \\. (?:${ID}|_|\{(?:${ImportSelector},)*(?:${ImportSelector|_})\})`
-  ImportSelector: `${ID}(?:=>(?:${ID}|_))?`
-  StableId: `${ID}|<StableId> \\. ${ID}|(?:${ID} \\.)? this \\. ${ID}|(?:${ID} \\.)? super (?:\\[${ID}\\])? \\. ${ID}`
-*/
-  // multiline
+  /* TODO
+    const WS = '\t\n\r ',
+        OP = '!#%&*+-/:<-@\\\\^|~\x7F';
+    const ID = `[\\w$]+(?:_[${OP}])?|[${OP}]+|\`(?:[^\\\\\`]|\\\\[\\w\\W])*\``;
+  */
+  // Import            ::=  ‘import’ ImportExpr {‘,’ ImportExpr}
+  // ImportExpr        ::=  StableId ‘.’ (id | ‘_’ | ImportSelectors)
+  // ImportSelectors   ::=  ‘{’ {ImportSelector ‘,’} (ImportSelector | ‘_’) ‘}’
+  // ImportSelector    ::=  id [‘=>’ id | ‘=>’ ‘_’]
+
+  // Path              ::=  StableId
+  //                     |  [id ‘.’] ‘this’
+  // StableId          ::=  id
+  //                     |  Path ‘.’ id
+  //                     |  [id ‘.’] ‘super’ [ClassQualifier] ‘.’ id
+  // ClassQualifier    ::=  ‘[’ id ‘]’
+  /* TODO
+    `(?:^|;|\\{|[^${OP}]=>)[${WS}]*import[${WS}]+<...>`
+    ImportExpr: `${StableId} \\. (?:${ID}|_|\{(?:${ImportSelector},)*(?:${ImportSelector|_})\})`
+    ImportSelector: `${ID}(?:=>(?:${ID}|_))?`
+    StableId: `${ID}|<StableId> \\. ${ID}|(?:${ID} \\.)? this \\. ${ID}|(?:${ID} \\.)? super (?:\\[${ID}\\])? \\. ${ID}`
+  */
+
+  // - multiline
   // TODO
 }
 
@@ -344,19 +363,20 @@ function checkForReferencesCSharp(text, types) {
   while (match = namespaceRegExp.exec(text)) {
     const namespace = match[1].split('.');
     for (let i = 1; i <= namespace.length; ++i)
-      usings.push(namespace.slice(0, i).join('.') + '.');
+      usings.push(`${namespace.slice(0, i).join('.')}.`);
   }
   const usingRegExp = /(?:^|;)\s*using\s+([^;]+)\s*;/gm;
   while (match = usingRegExp.exec(text))
-    usings.push(match[1] + '.');
+    usings.push(`${match[1]}.`);
   const matches = [];
   for (const [index, type] of types.entries()) {
-    const typeName = type.map(_ => _[0].toUpperCase() + _.substring(1)).join('.');
+    const typeName = type.map(_ => _[0].toUpperCase() + _.substring(1))
+        .join('.');
     let prefix = 0;
     for (const using of usings)
       if (typeName.startsWith(using) && using.length > prefix)
         prefix = using.length;
-    if (RegExp('\\b' + RegExp.escape(typeName.substring(prefix)) + '\\b').test(text))
+    if (RegExp(`\\b${RegExp.escape(typeName.substring(prefix))}\\b`).test(text))
       matches.push(index);
   }
   return matches;
@@ -366,7 +386,7 @@ function checkForReferencesCpp(text, types) {
   // Temp hack:
   const matches = [];
   for (const [index, type] of types.entries())
-    if (RegExp('\\b' + RegExp.escape(type.join('::')) + '\\b').test(text))
+    if (RegExp(`\\b${RegExp.escape(type.join('::'))}\\b`).test(text))
       matches.push(index);
   return matches;
 }
@@ -389,14 +409,14 @@ function findSpatialOSProject(searchPath = '') {
 
 // TODO: Ensure behavior with respect to symbolic links is correct.
 // Caller must not modify yielded breadcrumbs value.
-function* readDirRecursive(basePath, dirFilter = undefined, breadcrumbs = []) {
+function *readDirRecursive(basePath, dirFilter = undefined, breadcrumbs = []) {
   for (const file of fs.readdirSync(basePath)) {
     const newPath = path.join(basePath, file),
         stats = fs.statSync(newPath);
     breadcrumbs.push(file);
     if (stats.isDirectory()) {
       if (!dirFilter || dirFilter(newPath, breadcrumbs))
-        yield* readDirRecursive(newPath, dirFilter, breadcrumbs);
+        yield *readDirRecursive(newPath, dirFilter, breadcrumbs);
     } else if (stats.isFile())
       yield [newPath, breadcrumbs];
     breadcrumbs.pop();
@@ -431,7 +451,8 @@ function parseVersion(version) {
 }
 
 function stringifyVersion(version) {
-  return version.slice(0, 3).join('.') + (version[3] != null ? '-' + version[3] : '');
+  return version.slice(0, 3).join('.')
+      + (version[3] != null ? `-${version[3]}` : '');
 }
 
 function errorExit(format, ...args) {

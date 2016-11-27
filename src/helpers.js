@@ -67,7 +67,7 @@ polyfillFunction(Reflect, function isRegExp(value) {
   const prop = Object.getOwnPropertyDescriptor(value, 'lastIndex');
   if (prop.configurable || !prop.hasOwnProperty('value'))
     return false;
-  const compile = RegExp.prototype.compile;
+  const {compile} = RegExp.prototype;
   if (compile === undefined)
     throw Error('Missing RegExp.prototype.compile');
   try {
