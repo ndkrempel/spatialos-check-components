@@ -1,6 +1,7 @@
 #!/usr/bin/env node --throw-deprecation --use_strict
 
 // TODO: Setup linting, preprocessing, compiling/minifying, testing.
+// TODO: Test "uneval"-type lint rules; switch to leading underscores (incl. lint).
 // TODO: Use Winston/Bunyan for logging.
 // TODO: ANSI color with custom string literal.
 //     (See chalk, colors, cli-color, ansi, ansicolors, terminal-kit, manakin.)
@@ -18,7 +19,8 @@ const assert = require('assert'),
     program = require('commander');
 
 require('./helpers');
-const schema = require('./schema');
+const richoutput = require('./richoutput'),
+    schema = require('./schema'),
 
 const PROJECT_FILE = 'spatialos.json',
     SCHEMA_DIR = 'schema',
@@ -57,220 +59,242 @@ program.version('1.0.0')
     .arguments('[project_path]')
     .parse(process.argv);
 
-if (program.args.length > 1) {
-  program.outputHelp();
-  process.exit(1);
-}
-
-const projectPath = (() => {
-  if (!program.args.empty) {
-    const [path] = program.args;
-    if (!directoryExists(path))
-      throw errorExit('Fatal error: specified path "%s" does not exist or is not a directory.', path);
-    if (!isSpatialOSProject(path))
-      throw errorExit('Fatal error: specified path "%s" is not a SpatialOS project directory'
-          + ' (missing "%s" file).', path, PROJECT_FILE);
-    return path;
-  } else {
-    const path = findSpatialOSProject();
-    if (path == null)
-      throw errorExit('Fatal error: could not find SpatialOS project.\n'
-          + 'Run this tool from within a SpatialOS project directory tree'
-          + ' (indicated by the presence of a "%s" file),'
-          + ' or specify the path to the project root as an argument.',
-          PROJECT_FILE);
-    return path;
+try {
+  if (program.args.length <= 1)
+    main(...program.args);
+  else {
+    program.outputHelp();
+    process.exitCode = 1;
   }
-})();
-log('Using SpatialOS project at "%s".', projectPath);
-
-const project = JSON.parse(fs.readFileSync(
-    path.join(projectPath, PROJECT_FILE), 'utf8'));
-assert(project.hasOwnProperty('name') && typeof project['name'] === 'string',
-    'Missing project name');
-assert(project.hasOwnProperty('project_version')
-    && typeof project['project_version'] === 'string',
-    'Missing project version');
-assert(project.hasOwnProperty('sdk_version')
-    && typeof project['sdk_version'] === 'string',
-    'Missing project SDK version');
-const projectName = project['name'],
-    projectVersion = project['project_version'],
-    projectSdkVersion = parseVersion(project['sdk_version']);
-assert(projectSdkVersion, 'Invalid project SDK version');
-log('Name:           %s', projectName);
-log('Version:        %s', projectVersion);
-log('SDK version:    %s', stringifyVersion(projectSdkVersion));
-// TODO: Support earlier SpatialOS versions.
-if (projectSdkVersion[0] < 8)
-  throw errorExit('Fatal error: this tool only supports projects using'
-      + ' the new schema format (SpatialOS 8 or later).\n'
-      + 'The project\'s declared SDK version is %s.',
-      stringifyVersion(projectSdkVersion));
-
-/*
-Worker JSON format (spatialos_worker.json):
-  build_type: scala | unity
-  build_assets: [gsim, scala_exe]
-  generate_build_scripts: boolean
-  launch
-    <configuration>
-      <os> (windows | mac)
-        command:
-        arguments: []
-          ${IMPROBABLE_PROJECT_NAME}
-          ${IMPROBABLE_PROJECT_ROOT}
-  ...
-*/
-log('Workers:');
-const workers = [], workersPath = path.join(projectPath, WORKERS_DIR);
-for (const workerName of fs.readdirSync(workersPath)) {
-  const workerPath = path.join(workersPath, workerName);
-  if (!fs.statSync(workerPath).isDirectory())
-    continue;
-  let data;
-  try {
-    data = fs.readFileSync(path.join(workerPath, WORKER_FILE), 'utf8');
-  } catch (e) {
-    if (e.code === 'ENOENT')
-      continue;
+} catch (e) {
+  if (e === undefined)
+    process.exitCode = 1;
+  else
     throw e;
-  }
-  const workerData = JSON.parse(data);
-  const worker = {
-    name:      workerName,
-    languages: [],
-  };
-  switch (workerData['build_type']) {
-    case 'scala':
-      worker.languages.push(Language.SCALA);
-      break;
-    case 'unity':
-      worker.languages.push(Language.CSHARP);
-      break;
-    case 'unreal':
-      worker.languages.push(Language.CPP);
-      break;
-    // TODO: C#, C++, (C, Java, JavaScript, ...?)
-    case undefined:
-      throw errorExit('Missing worker type for "%s".', workerName);
-    default:
-      throw errorExit('Unknown worker type for "%s": "%s".', workerName,
-          workerData['build_type']);
-  }
-  log('  %s (%s: %s)', workerName, workerData['build_type'],
-      worker.languages.join(', '));
-  workers.push(worker);
-  // TODO
-}
-if (workers.empty)
-  throw errorExit('No workers found. Ensure "%s" is present inside each worker directory.', WORKER_FILE);
-if (!workers.some(_ => _.name === GSIM_WORKER))
-  throw errorExit('GSim worker not found. Ensure a worker directory named "%s" is present and contains a "%s" file.', GSIM_WORKER, WORKER_FILE);
-
-const schemaPath = path.join(projectPath, SCHEMA_DIR);
-assert(directoryExists(schemaPath), 'Schema directory not present');
-log('Scanning schema definitions...');
-let components = [];
-for (const [file, breadcrumbs] of readDirRecursive(schemaPath)) {
-  if (!breadcrumbs.last.endsWith(SCHEMA_EXT))
-    continue;
-  // TODO: log('==> %s', breadcrumbs.join('/'));
-  // TODO: Is UTF-8 the right encoding?
-  const data = fs.readFileSync(file, 'utf8');
-  // TODO: Use schema.FileStream to avoid reading entire file into a string.
-  const s = schema.parse(new schema.StringStream(data));
-  for (const component of s.components)
-    component.package = s.package;
-  components = components.concat(s.components);
-}
-log('%d components found.', components.length);
-
-components.sort((x, y) => x.id - y.id);
-/* TODO
-log('All components:');
-for (const component of components)
-  log('%d\t%s', component.id, component.name);
-log('ID ranges: %s.', groupRanges(components.map(_ => _.id)).map(r => r[0] + (r[0] !== r[1] ? '-' + r[1] : '')).join(', '));
-*/
-
-const types = {};
-for (const language of Object.values(Language)) {
-  const {apiTypes} = LANGUAGE_DATA[language];
-  const list = [], revMap = [];
-  components.forEach((c, i) => apiTypes.forEach(t => {
-    list.push(c.package.concat(c.name + t));
-    revMap.push(i);
-  }));
-  types[language] = {list, revMap};
 }
 
-log('Scanning worker code (this could take several minutes)...');
-for (const component of components)
-  component.workers = new Set;
-console.log();  // TODO: Remove.
-for (const worker of workers) {
-  // log('  %s', worker.name);
-  console.log('\b\r%s', ' '.repeat(79));  // TODO: Remove.
-  console.log('\b\r  %s', worker.name);
-  console.log();  // TODO: Remove.
-  const workerPath = path.join(workersPath, worker.name),
-      dirFilter = (_, breadcrumbs) =>
-      !GENERATED_DIRS.includes(breadcrumbs.last);
-  for (const [file, breadcrumbs] of readDirRecursive(workerPath, dirFilter)) {
-    for (const language of worker.languages) {
-      if (!LANGUAGE_DATA[language].extensions.some(
-          _ => breadcrumbs.last.endsWith(_)))
+function main(pathArg = undefined) {
+
+  const out = getOutput();
+
+  const projectPath = getProjectPath(pathArg);
+  log('Using SpatialOS project at "%s".', projectPath);
+
+  const project = JSON.parse(fs.readFileSync(
+      path.join(projectPath, PROJECT_FILE), 'utf8'));
+  assert(project.hasOwnProperty('name') && typeof project['name'] === 'string',
+      'Missing project name');
+  assert(project.hasOwnProperty('project_version')
+      && typeof project['project_version'] === 'string',
+      'Missing project version');
+  assert(project.hasOwnProperty('sdk_version')
+      && typeof project['sdk_version'] === 'string',
+      'Missing project SDK version');
+  const projectName = project['name'],
+      projectVersion = project['project_version'],
+      projectSdkVersion = parseVersion(project['sdk_version']);
+  assert(projectSdkVersion, 'Invalid project SDK version');
+  log('Name:           %s', projectName);
+  log('Version:        %s', projectVersion);
+  log('SDK version:    %s', stringifyVersion(projectSdkVersion));
+  // TODO: Support earlier SpatialOS versions.
+  if (projectSdkVersion[0] < 8)
+    throw errorExit('Fatal error: this tool only supports projects using'
+        + ' the new schema format (SpatialOS 8 or later).\n'
+        + 'The project\'s declared SDK version is %s.',
+        stringifyVersion(projectSdkVersion));
+
+  /*
+  Worker JSON format (spatialos_worker.json):
+    build_type: scala | unity
+    build_assets: [gsim, scala_exe]
+    generate_build_scripts: boolean
+    launch
+      <configuration>
+        <os> (windows | mac)
+          command:
+          arguments: []
+            ${IMPROBABLE_PROJECT_NAME}
+            ${IMPROBABLE_PROJECT_ROOT}
+    ...
+  */
+  log('Workers:');
+  const workers = [], workersPath = path.join(projectPath, WORKERS_DIR);
+  for (const workerName of fs.readdirSync(workersPath)) {
+    const workerPath = path.join(workersPath, workerName);
+    if (!fs.statSync(workerPath).isDirectory())
+      continue;
+    let data;
+    try {
+      data = fs.readFileSync(path.join(workerPath, WORKER_FILE), 'utf8');
+    } catch (e) {
+      if (e.code === 'ENOENT')
         continue;
-      console.log('\b\r%s', ' '.repeat(79));  // TODO: Remove.
-      console.log('\b\r%s', file.slice(-79));  // TODO: Remove.
-      const data = fs.readFileSync(file, 'utf8');
-      const indices = LANGUAGE_DATA[language].checker(data,
-          types[language].list);
-      for (const i of indices)
-        components[types[language].revMap[i]].workers.add(worker.name);
+      throw e;
+    }
+    const workerData = JSON.parse(data);
+    const worker = {
+      name:      workerName,
+      languages: [],
+    };
+    switch (workerData['build_type']) {
+      case 'scala':
+        worker.languages.push(Language.SCALA);
+        break;
+      case 'unity':
+        worker.languages.push(Language.CSHARP);
+        break;
+      case 'unreal':
+        worker.languages.push(Language.CPP);
+        break;
+      // TODO: C#, C++, (C, Java, JavaScript, ...?)
+      case undefined:
+        throw errorExit('Missing worker type for "%s".', workerName);
+      default:
+        throw errorExit('Unknown worker type for "%s": "%s".', workerName,
+            workerData['build_type']);
+    }
+    log('  %s (%s: %s)', workerName, workerData['build_type'],
+        worker.languages.join(', '));
+    workers.push(worker);
+    // TODO
+  }
+  if (workers.empty)
+    throw errorExit('No workers found. Ensure "%s" is present inside each worker directory.', WORKER_FILE);
+  if (!workers.some(_ => _.name === GSIM_WORKER))
+    throw errorExit('GSim worker not found. Ensure a worker directory named "%s" is present and contains a "%s" file.', GSIM_WORKER, WORKER_FILE);
+
+  const schemaPath = path.join(projectPath, SCHEMA_DIR);
+  assert(directoryExists(schemaPath), 'Schema directory not present');
+  log('Scanning schema definitions...');
+  let components = [];
+  for (const [file, breadcrumbs] of readDirRecursive(schemaPath)) {
+    if (!breadcrumbs.last.endsWith(SCHEMA_EXT))
+      continue;
+    // TODO: log('==> %s', breadcrumbs.join('/'));
+    // TODO: Is UTF-8 the right encoding?
+    const data = fs.readFileSync(file, 'utf8');
+    // TODO: Use schema.FileStream to avoid reading entire file into a string.
+    const s = schema.parse(new schema.StringStream(data));
+    for (const component of s.components)
+      component.package = s.package;
+    components = components.concat(s.components);
+  }
+  log('%d components found.', components.length);
+
+  components.sort((x, y) => x.id - y.id);
+  /* TODO
+  log('All components:');
+  for (const component of components)
+    log('%d\t%s', component.id, component.name);
+  log('ID ranges: %s.', groupRanges(components.map(_ => _.id)).map(r => r[0] + (r[0] !== r[1] ? '-' + r[1] : '')).join(', '));
+  */
+
+  const types = {};
+  for (const language of Object.values(Language)) {
+    const {apiTypes} = LANGUAGE_DATA[language];
+    const list = [], revMap = [];
+    components.forEach((c, i) => apiTypes.forEach(t => {
+      list.push(c.package.concat(c.name + t));
+      revMap.push(i);
+    }));
+    types[language] = {list, revMap};
+  }
+
+  log('Scanning worker code (this could take several minutes)...');
+  for (const component of components)
+    component.workers = new Set;
+  const WIDTH = 79;  // TODO: Remove.
+  console.log();  // TODO: Remove.
+  for (const worker of workers) {
+    // log('  %s', worker.name);
+    console.log('\b\r%s', ' '.repeat(WIDTH));  // TODO: Remove.
+    console.log('\b\r  %s', worker.name);
+    console.log();  // TODO: Remove.
+    const workerPath = path.join(workersPath, worker.name),
+        dirFilter = (_, breadcrumbs) =>
+        !GENERATED_DIRS.includes(breadcrumbs.last);
+    for (const [file, breadcrumbs] of readDirRecursive(workerPath, dirFilter)) {
+      for (const language of worker.languages) {
+        if (!LANGUAGE_DATA[language].extensions.some(
+            _ => breadcrumbs.last.endsWith(_)))
+          continue;
+        console.log('\b\r%s', ' '.repeat(WIDTH));  // TODO: Remove.
+        console.log('\b\r%s', file.slice(-WIDTH));  // TODO: Remove.
+        const data = fs.readFileSync(file, 'utf8');
+        const indices = LANGUAGE_DATA[language].checker(data,
+            types[language].list);
+        for (const i of indices)
+          components[types[language].revMap[i]].workers.add(worker.name);
+      }
     }
   }
-}
-console.log('\b\r%s', ' '.repeat(79));  // TODO: Remove.
-console.log('\b\rDone.');  // TODO: Remove.
-// log('Done.')
+  console.log('\b\r%s', ' '.repeat(WIDTH));  // TODO: Remove.
+  console.log('\b\rDone.');  // TODO: Remove.
+  // log('Done.')
 
-const COL_WIDTH = 32;
-log('');
-log('%s | %s | %s', `${' '.repeat(6)}ID`.slice(-6), `${' '.repeat(COL_WIDTH)}Component`.slice(-COL_WIDTH), 'Workers');
-log('%s-+-%s-+-%s', '-'.repeat(6), '-'.repeat(COL_WIDTH), '-'.repeat(COL_WIDTH));
-for (const component of components) {
-  const abbrevName = component.package.map(_ => _[0]).concat(component.name)
-      .join('.');
-  log('%s | %s | %s',
-      (' '.repeat(6) + component.id).slice(-6),
-      (' '.repeat(COL_WIDTH) + abbrevName).slice(-COL_WIDTH),
-      Array.from(component.workers).join(', ').substring(0, COL_WIDTH));
-}
+  const COL_WIDTH = 32;
+  log('');
+  log('%s | %s | %s', `${' '.repeat(6)}ID`.slice(-6), `${' '.repeat(COL_WIDTH)}Component`.slice(-COL_WIDTH), 'Workers');
+  log('%s-+-%s-+-%s', '-'.repeat(6), '-'.repeat(COL_WIDTH), '-'.repeat(COL_WIDTH));
+  for (const component of components) {
+    const abbrevName = component.package.map(_ => _[0]).concat(component.name)
+        .join('.');
+    log('%s | %s | %s',
+        (' '.repeat(6) + component.id).slice(-6),
+        (' '.repeat(COL_WIDTH) + abbrevName).slice(-COL_WIDTH),
+        Array.from(component.workers).join(', ').substring(0, COL_WIDTH));
+  }
 
-log('');
-for (const component of components) {
-  const fullName = component.package.concat(component.name).join('.');
-  if (!component.workers.size) {
-    log('Component "%s" not used by any worker.', fullName);
-    continue;
+  log('');
+  for (const component of components) {
+    const fullName = component.package.concat(component.name).join('.');
+    if (!component.workers.size) {
+      log('Component "%s" not used by any worker.', fullName);
+      continue;
+    }
+    if (!component.workers.has(GSIM_WORKER)) {
+      log('Component "%s" not used by GSim.', fullName);
+      continue;
+    }
+    const sync = !component.options.some(_ =>
+        _.name === 'synchronized' && _.value === false);
+    if (!sync && component.workers.size !== 1) {
+      log('Component "%s" used by non-GSim workers but not synchronized.',
+          fullName);
+      continue;
+    }
+    if (sync && component.workers.size === 1) {
+      log('Component "%s" is GSim-only but still synchronized.', fullName);
+      continue;
+    }
   }
-  if (!component.workers.has(GSIM_WORKER)) {
-    log('Component "%s" not used by GSim.', fullName);
-    continue;
+  
+  function getOutput() {
+    // TODO: Construct proper output stream(s) based on flags.
+    return new richoutput.TextOutput(process.stdout);
   }
-  const sync = !component.options.some(_ =>
-      _.name === 'synchronized' && _.value === false);
-  if (!sync && component.workers.size !== 1) {
-    log('Component "%s" used by non-GSim workers but not synchronized.',
-        fullName);
-    continue;
+
+  function getProjectPath(pathArg = undefined) {
+    if (pathArg === undefined) {
+      const path = findSpatialOSProject();
+      if (path == null)
+        throw errorExit('Fatal error: could not find SpatialOS project.\n'
+            + 'Run this tool from within a SpatialOS project directory tree'
+            + ' (indicated by the presence of a "%s" file),'
+            + ' or specify the path to the project root as an argument.',
+            PROJECT_FILE);
+      return path;
+    } else {
+      if (!directoryExists(pathArg))
+        throw errorExit('Fatal error: specified path "%s" does not exist or is not a directory.', pathArg);
+      if (!isSpatialOSProject(pathArg))
+        throw errorExit('Fatal error: specified path "%s" is not a SpatialOS project directory'
+            + ' (missing "%s" file).', pathArg, PROJECT_FILE);
+      return pathArg;
+    }
   }
-  if (sync && component.workers.size === 1) {
-    log('Component "%s" is GSim-only but still synchronized.', fullName);
-    continue;
-  }
+
 }
 
 function checkForReferencesScala(text, types) {
